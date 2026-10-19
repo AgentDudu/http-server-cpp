@@ -1,0 +1,56 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "gcc",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "C:/mingw64/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "C:/mingw64/bin/g++.exe",
+        "CMAKE_MAKE_PROGRAM": "C:/mingw64/bin/ninja.exe",
+        "CMAKE_EXE_LINKER_FLAGS": "-static"
+      }
+    },
+    {
+      "name": "gcc-debug",
+      "displayName": "GCC Debug",
+      "inherits": "gcc",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "gcc-release",
+      "displayName": "GCC Release",
+      "inherits": "gcc",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "gcc-asan",
+      "displayName": "GCC ASan+UBSan",
+      "inherits": "gcc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HTTP_SERVER_ENABLE_SANITIZERS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "gcc-debug", "configurePreset": "gcc-debug" },
+    { "name": "gcc-release", "configurePreset": "gcc-release" },
+    { "name": "gcc-asan", "configurePreset": "gcc-asan" }
+  ],
+  "testPresets": [
+    {
+      "name": "gcc-debug",
+      "configurePreset": "gcc-debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "gcc-asan",
+      "configurePreset": "gcc-asan",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}
