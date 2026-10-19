@@ -1,0 +1,25 @@
+# build output
+build/
+out/
+.cache/
+compile_commands.json
+
+# objects / binaries
+*.o
+*.obj
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.a
+
+# editors
+.vs/
+.vscode/
+.idea/
+
+# never commit
+.env
+*.pem
+*.key
+id_rsa*
