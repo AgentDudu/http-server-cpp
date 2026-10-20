@@ -58,7 +58,7 @@ One codebase, one seam. Everything above `net/` never sees a platform macro.
 
   src/http, src/server, reactor, connection  ─── single source
   src/net:  socket.h poll.h error.h (portable API)
-            win/ (winsock impl)      posix/ (BSD socket impl)   ← the only seam
+            raw_win.cpp (Winsock)    raw_posix.cpp (BSD)     ← the only seam
 ```
 
 **Ownership rule.** A `Connection` is created by exactly one reactor and destroyed by
@@ -114,9 +114,10 @@ cmake/
 src/
   main.cpp                flags, logger, start/stop
   app/    signals_win.cpp / signals_posix.cpp   → sets shutdown flag, wakes reactor
-  net/    socket.h poll.h error.h context.h     portable API, documented above
-          win/   socket.cpp wsa.cpp poll.cpp
-          posix/ socket.cpp context.cpp poll.cpp
+  net/    socket.h poll.h error.h context.h detail.h detail_raw.h   portable API
+          socket_common.cpp shared socket logic
+          raw_win.cpp error_win.cpp context_win.cpp        Winsock backend
+          raw_posix.cpp error_posix.cpp context_posix.cpp  BSD socket backend
   http/   request.* response.* headers.* mime.* status.* url.*   (response/headers/status landed)
   server/ server.* static_file.*               single source, std::filesystem
 include/                  (none unless a public lib target is ever wanted)
@@ -170,7 +171,7 @@ phase/step/milestone wording, ever.
 | ✓ | ~~`feature/build-scaffold`~~ | CMake, presets, doctest, `ck.ps1` | merged |
 | ✓ | ~~`feature/socket-layer`~~ | Winsock RAII, non-blocking, WSAPoll | merged |
 | ✓ | ~~`feature/response-writer`~~ | Response, headers, status, chunk encoder | merged |
-| P | `feature/posix-socket-layer` | The seam: `socket.h/poll.h/error.h/context.h` portable API; `net/win/` + `net/posix/` split; `accept4` + `MSG_NOSIGNAL` + `EINTR` discipline on Linux; `test_socket.cpp` cross-platform; Docker gate builds whole Linux tree | same socket test file green on Windows **and** in container (ASan) |
+| P | `feature/posix-socket-layer` | The seam: `socket.h/poll.h/error.h/context.h` portable API; `raw_*`/`error_*`/`context_*` per-OS backends + `socket_common.cpp`; `accept4` + `MSG_NOSIGNAL` + `EINTR` discipline on Linux; `test_socket.cpp` cross-platform; Docker gate builds whole Linux tree | same socket test file green on Windows **and** in container (ASan) |
 | C | `feature/ci-matrix` | GitHub Actions `ubuntu + windows` matrix, ASan job on Linux, `ck.ps1`/container parity with CI | PR #next is gated by it |
 | R | `feature/reactor-and-connection` | poll loop, connection state machine, hand-off inbox, timeouts, buffering, signals (win + posix), graceful shutdown — all single-source except `app/signals_*` | integration: in-memory 200, keep-alive, 408 idle, Ctrl-C/SIGTERM exit 0; **TSan job added and green** |
 | S | `feature/static-files` | root mapping, traversal guard, MIME, index, 404/405, error pages (`std::filesystem`) | status-by-status integration tests; traversal rejected on both OSes |
