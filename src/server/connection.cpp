@@ -15,16 +15,19 @@ Connection::Connection(net::Socket socket, const Handler& handler, std::chrono::
 
 void Connection::respond(const Reply& reply, bool closeAfter, bool omitBody) {
     http::Response resp(reply.status);
+    for (const auto& entry : reply.headers) {
+        resp.setHeader(entry.first, entry.second);
+    }
     if (!reply.content_type.empty()) {
         resp.setHeader("Content-Type", reply.content_type);
     }
     if (closeAfter) {
         resp.setHeader("Connection", "close");
     }
-    if (omitBody) {
+    if (omitBody && !http::statusOmitsBody(static_cast<int>(reply.status))) {
         // HEAD: truthful Content-Length, body never written.
         resp.setHeader("Content-Length", std::to_string(reply.body.size()));
-    } else {
+    } else if (!omitBody) {
         resp.setBody(reply.body);
     }
     std::string head;
@@ -66,9 +69,11 @@ Connection::Drain Connection::drainParser() {
             }
             // Protocol violation: answer once (best effort), then drop —
             // smuggling candidates never share a stream.
-            respond(
-                Reply{st, "text/plain; charset=utf-8", std::string(http::reasonPhrase(st)) + "\n"},
-                true, false);
+            respond(Reply{st,
+                          "text/plain; charset=utf-8",
+                          std::string(http::reasonPhrase(st)) + "\n",
+                          {}},
+                    true, false);
             flush();
             close();
             return Drain::Done;
@@ -82,8 +87,10 @@ Connection::Drain Connection::drainParser() {
         } catch (...) {
             // Exceptions never cross the reactor; one broken request must not
             // take the process (or the connection's peer) down.
-            reply = Reply{http::Status::InternalError, "text/plain; charset=utf-8",
-                          "500 Internal Server Error\n"};
+            reply = Reply{http::Status::InternalError,
+                          "text/plain; charset=utf-8",
+                          "500 Internal Server Error\n",
+                          {}};
         }
         parser_.reset();
         // During shutdown a queued reply (Connection: close) must not strand
@@ -201,7 +208,8 @@ void Connection::onTimeout() {
         return;
     }
     respond(
-        Reply{http::Status::RequestTimeout, "text/plain; charset=utf-8", "408 Request Timeout\n"},
+        Reply{
+            http::Status::RequestTimeout, "text/plain; charset=utf-8", "408 Request Timeout\n", {}},
         true, false);
     if (!dead_) {
         flush();

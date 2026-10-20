@@ -17,7 +17,9 @@ until then.
     send/recv, reported to the reactor from poll as `ErrorKind::Interrupted`.
   - `glibc` needs `_GNU_SOURCE` with `-std=c++20` for `accept4`/`SOCK_CLOEXEC`.
   - glibc `setsockopt` requires `int` option size; Winsock is lenient.
-- `http/` — status, headers, request parser, response serialization landed. Parser is
+- `http/` — status, headers, request parser, response serialization, HTTP-date
+  (IMF/RFC 850/asctime parse + IMF format, no libc `timegm`/`_mkgmtime` —
+  portable civil-calendar math) landed. Parser is
   push/incremental, enforces head/body/count limits, and rejects bare-LF endings,
   obsolete folding, duplicate `Content-Length`, `Content-Length`+`Transfer-Encoding`,
   non-token names/methods, unknown versions. URL decode/normalise and MIME live
@@ -33,12 +35,21 @@ until then.
   joiner). A slow reader throttles its connection — queued responses stop
   growing, remaining pipelined requests wait in the parser, POLLOUT or the next
   read resumes the drain.
-  Handlers return `Reply{status, content_type, body}`; HEAD keeps an honest
-  `Content-Length` and no body; handler exceptions become 500 at the reactor seam.
+  Handlers return `Reply{status, content_type, body, headers}`; HEAD keeps an honest
+  `Content-Length` and no body (and no `Content-Length` at all on 304); handler
+  exceptions become 500 at the reactor seam.
   `StaticFiles` serves a canonical root: strict percent-decode before resolution,
   traversal/encoded/backslash/absolute targets refused as 404 before touching disk
   (symlink prefixes resolved via `weakly_canonical`, case-folded containment on
-  Windows), index.html for directories, 405 elsewhere, whole-file reads.
+  Windows), index.html for directories, 405 elsewhere (with `Allow`), whole-file reads.
+  Caching/revalidation: strong `ETag` (size + mtime) and `Last-Modified` on every
+  200; `If-None-Match` (weak comparison, `*`, lists) and `If-Modified-Since`
+  (If-None-Match alone decides when present) short-circuit to bodyless 304 before
+  the file is read; single `Range` → 206 + `Content-Range`, past-the-end → 416 +
+  `bytes */len`, `If-Range` (strong validator comparison) gates the range; anything
+  unparsable, multi-range, or non-`bytes` unit is ignored and the whole entity is
+  served. A truncate race between stat and read degrades the 206 to 416 rather
+  than a short body.
   Protocol errors are answered once (best effort) then the connection drops —
   smuggling candidates never share a stream. `ShutdownSignal` is the pluggable stop
   trigger; tests drive it directly.
