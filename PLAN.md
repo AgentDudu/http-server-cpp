@@ -171,7 +171,7 @@ phase/step/milestone wording, ever.
 | ✓ | ~~`feature/build-scaffold`~~ | CMake, presets, doctest, `ck.ps1` | merged |
 | ✓ | ~~`feature/socket-layer`~~ | Winsock RAII, non-blocking, WSAPoll | merged |
 | ✓ | ~~`feature/response-writer`~~ | Response, headers, status, chunk encoder | merged |
-| P | `feature/posix-socket-layer` | The seam: `socket.h/poll.h/error.h/context.h` portable API; `raw_*`/`error_*`/`context_*` per-OS backends + `socket_common.cpp`; `accept4` + `MSG_NOSIGNAL` + `EINTR` discipline on Linux; `test_socket.cpp` cross-platform; Docker gate builds whole Linux tree | same socket test file green on Windows **and** in container (ASan) |
+| ✓ | ~~`feature/posix-socket-layer`~~ | The seam: portable `net/` API + `raw_win`/`raw_posix` backends; `accept4` + `MSG_NOSIGNAL` + `EINTR`; cross-platform socket tests; Docker gate builds whole Linux tree | merged — both gates green |
 | C | `feature/ci-matrix` | GitHub Actions `ubuntu + windows` matrix, ASan job on Linux, `ck.ps1`/container parity with CI | PR #next is gated by it |
 | R | `feature/reactor-and-connection` | poll loop, connection state machine, hand-off inbox, timeouts, buffering, signals (win + posix), graceful shutdown — all single-source except `app/signals_*` | integration: in-memory 200, keep-alive, 408 idle, Ctrl-C/SIGTERM exit 0; **TSan job added and green** |
 | S | `feature/static-files` | root mapping, traversal guard, MIME, index, 404/405, error pages (`std::filesystem`) | status-by-status integration tests; traversal rejected on both OSes |
@@ -180,7 +180,7 @@ phase/step/milestone wording, ever.
 | D | `feature/docs-and-benchmark` | README (build/run per OS, limits), load script, numbers | documented; req/s + RSS recorded on both platforms |
 
 Then `release/0.1.0` → `develop` + PR to `main` (approval required) → tag `v0.1.0`.
-P and C may proceed in either order; R needs both.
+C is next; R needs C.
 
 ## 8. Git workflow (gitflow)
 
