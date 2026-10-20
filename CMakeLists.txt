@@ -7,6 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(HTTP_SERVER_ENABLE_SANITIZERS "Build with address and undefined sanitizers" OFF)
+option(HTTP_SERVER_ENABLE_TSAN "Build with ThreadSanitizer (Linux; reactor tests)" OFF)
 
 include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
@@ -24,6 +25,14 @@ if(HTTP_SERVER_ENABLE_SANITIZERS)
   endif()
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
   add_link_options(-fsanitize=address,undefined)
+endif()
+
+if(HTTP_SERVER_ENABLE_TSAN)
+  if(HTTP_SERVER_ENABLE_SANITIZERS)
+    message(FATAL_ERROR "TSAN and ASAN/UBSAN sanitizer options are mutually exclusive.")
+  endif()
+  add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+  add_link_options(-fsanitize=thread)
 endif()
 
 set(HTTP_WARNINGS -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
@@ -59,8 +68,21 @@ if(WIN32)
 endif()
 target_compile_options(net PRIVATE ${HTTP_WARNINGS})
 
-add_executable(http_server src/main.cpp)
-target_link_libraries(http_server PRIVATE net http)
+# server: reactor + connection, platform-neutral; signals implementation is per OS.
+add_library(server STATIC
+  src/server/server.cpp
+  src/server/connection.cpp)
+target_link_libraries(server PUBLIC net http)
+target_compile_options(server PRIVATE ${HTTP_WARNINGS})
+
+if(WIN32)
+  set(app_signals_src src/app/signals_win.cpp)
+else()
+  set(app_signals_src src/app/signals_posix.cpp)
+endif()
+
+add_executable(http_server src/main.cpp ${app_signals_src})
+target_link_libraries(http_server PRIVATE net http server)
 target_compile_options(http_server PRIVATE ${HTTP_WARNINGS})
 
 enable_testing()
@@ -69,11 +91,12 @@ add_executable(unit_tests
   tests/test_main.cpp
   tests/test_socket.cpp
   tests/test_request.cpp
-  tests/test_response.cpp)
+  tests/test_response.cpp
+  tests/test_server.cpp)
 target_include_directories(unit_tests SYSTEM PRIVATE external/doctest)
 # doctest is a vendored header: warnings from it are not ours to fix,
 # hence SYSTEM above; our own test code still builds warning-clean.
 target_compile_options(unit_tests PRIVATE -Wall -Wextra -Werror)
-target_link_libraries(unit_tests PRIVATE net http)
+target_link_libraries(unit_tests PRIVATE net http server)
 
 add_test(NAME unit_tests COMMAND unit_tests)
