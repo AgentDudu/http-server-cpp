@@ -178,10 +178,10 @@ phase/step/milestone wording, ever.
 | ✓ | ~~`feature/static-files`~~ | root mapping, traversal guard, MIME, index, 404/405, HEAD (`std::filesystem`) + per-connection write cap | merged — traversal/HEAD/405/slow-loris/pipelined-burst tests both OSes; ASan + TSan green |
 | G | `feature/caching-and-range` | ETag, Last-Modified, If-None-Match, Range/206/416 | merged — 304 (weak/list/star/IMS-precedence) + single-range 206/416 + If-Range tests; multi-range ignored (200) by design; ASan + TSan green |
 | ✓ | ~~`feature/hardening`~~ | slow-body 408 budget, server-level smuggling corpus, env-gated 60 s RSS soak, restored threading suite | merged — corpus proves rejected streams die with the stream and never reach the handler; soak RSS drift < 16 MiB (Linux) |
-| D | `feature/docs-and-benchmark` | README (build/run per OS, limits), load script, numbers | documented; req/s + RSS recorded on both platforms |
+| D | `feature/docs-and-benchmark` | README (build/run per OS, limits), bench script, API/BUILDING docs | merged — README/BUILDING/API + `tools/bench-inside.sh`; numbers recorded on Linux (1 KiB keep-alive: 9.8k→47.3k req/s for 1→4 reactors). Windows numbers **not** recorded — no wrk/ab on the Windows box; same code path over Winsock. RSS: 60 s soak 109k iterations, 2.3 MB drift (CI `linux-soak`) |
 
 Then `release/0.1.0` → `develop` + PR to `main` (approval required) → tag `v0.1.0`.
-All of C, R, T, S, G, H merged; D (docs/benchmark) remains.
+All phases A–D merged; the release branch and the `main` PR remain.
 
 > **Integrity note (H-phase audit).** `tests/test_connection.cpp`, `tests/test_threads.cpp`,
 > `tests/test_util.cpp`, `tests/test_range.cpp` and a standalone `http::Range` module had
