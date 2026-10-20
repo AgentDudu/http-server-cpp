@@ -176,12 +176,12 @@ phase/step/milestone wording, ever.
 | R | `feature/reactor-and-connection` | single-threaded poll reactor: connection state machine, timeouts (408), POLLOUT backpressure, signals (self-pipe / console ctrl), graceful drain | merged — 200/keep-alive/408/400/stop integration tests; ASan + TSan green; SIGINT-exit-0 smoke in the Linux gate |
 | ✓ | ~~`feature/reactor-threading`~~ | acceptor thread + K reactors + socket hand-off inbox (`net::Wakeup`) | merged — cross-reactor keep-alive/pipelining/stop-drain tests; TSan green; EINTR double-join fixed |
 | ✓ | ~~`feature/static-files`~~ | root mapping, traversal guard, MIME, index, 404/405, HEAD (`std::filesystem`) + per-connection write cap | merged — traversal/HEAD/405/slow-loris/pipelined-burst tests both OSes; ASan + TSan green |
-| G | `feature/caching-and-range` | ETag, Last-Modified, If-None-Match, Range/206/416 | 304 + 206 tests incl. multi-range rejection |
+| G | `feature/caching-and-range` | ETag, Last-Modified, If-None-Match, Range/206/416 | merged — 304 (weak/list/star/IMS-precedence) + single-range 206/416 + If-Range tests; multi-range ignored (200) by design; ASan + TSan green |
 | H | `feature/hardening` | slow-body limit, smuggling corpus, soak (pipelining + slow-client tests landed with S) | ASan clean; 60 s soak flat RSS on Linux |
 | D | `feature/docs-and-benchmark` | README (build/run per OS, limits), load script, numbers | documented; req/s + RSS recorded on both platforms |
 
 Then `release/0.1.0` → `develop` + PR to `main` (approval required) → tag `v0.1.0`.
-R merged single-threaded; S (static files) merged on top — T (threading) can land next.
+All of C, R, T, S, G merged; H (hardening soak/corpus) then D (docs/benchmark) remain.
 
 ## 8. Git workflow (gitflow)
 

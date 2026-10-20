@@ -41,6 +41,7 @@ set(HTTP_WARNINGS -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
 add_library(http STATIC
   src/http/status.cpp
   src/http/headers.cpp
+  src/http/date.cpp
   src/http/request.cpp
   src/http/response.cpp)
 target_include_directories(http PUBLIC src)
@@ -94,6 +95,7 @@ add_executable(unit_tests
   tests/test_socket.cpp
   tests/test_request.cpp
   tests/test_response.cpp
+  tests/test_date.cpp
   tests/test_server.cpp
   tests/test_static.cpp)
 target_include_directories(unit_tests SYSTEM PRIVATE external/doctest)

@@ -10,8 +10,10 @@ namespace server {
 // Maps request targets to files under a canonical root. GET/HEAD only (405);
 // traversal, encoded traversal, absolute targets and backslashes are rejected
 // as 404 before touching the disk. Directories serve index.html; unknown
-// extensions get application/octet-stream. Whole-file reads (streaming and
-// conditional requests are the caching phase).
+// extensions get application/octet-stream. Serves ETag + Last-Modified with
+// If-None-Match/If-Modified-Since (304) and single byte-ranges (206/416,
+// If-Range honoured; multi-range and bad ranges ignore the header). Whole-file
+// reads; bounded streaming is a later phase.
 class StaticFiles {
 public:
     // Throws std::filesystem::filesystem_error when root does not exist.
