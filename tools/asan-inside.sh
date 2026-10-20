@@ -18,11 +18,15 @@ export TSAN_OPTIONS=halt_on_error=1
 
 # Graceful-shutdown smoke: SIGINT must drain, exit 0 (leak check rides on exit).
 echo "== SIGINT graceful stop smoke =="
-/tmp/asan/http_server 18099 &
+root=$(mktemp -d)
+printf '<html>ok</html>' > "$root/index.html"
+/tmp/asan/http_server 18099 "$root" &
 srv=$!
 sleep 0.5
 line=$(printf 'GET / HTTP/1.1\r\n\r\n' | timeout 5 nc 127.0.0.1 18099 | head -1)
 echo "$line" | grep -q "200" || { echo "smoke: expected 200, got: $line"; kill -9 $srv; exit 1; }
+tline=$(printf 'GET /../../etc/shadow HTTP/1.1\r\n\r\n' | timeout 5 nc 127.0.0.1 18099 | head -1)
+echo "$tline" | grep -q "404" || { echo "smoke: expected traversal 404, got: $tline"; kill -9 $srv; exit 1; }
 kill -INT $srv
 for _ in $(seq 40); do kill -0 $srv 2>/dev/null || break; sleep 0.1; done
 if kill -0 $srv 2>/dev/null; then

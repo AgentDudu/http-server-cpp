@@ -11,7 +11,7 @@ namespace net {
 // failure; the reason is in lastError() (only when the failure came from the OS
 // layer — calling on an invalid handle just returns false).
 class Socket {
-  public:
+public:
     Socket() = default;
     explicit Socket(detail::handle_t handle) : handle_(handle) {}
     ~Socket() { close(); }
@@ -52,7 +52,7 @@ class Socket {
     // >0 bytes read, 0 peer closed, -1 error (WouldBlock possible on non-blocking).
     int recvSome(void* buffer, std::size_t capacity);
 
-  private:
+private:
     static detail::handle_t detach(Socket& s) {
         const detail::handle_t h = s.handle_;
         s.handle_ = detail::kInvalidHandle;

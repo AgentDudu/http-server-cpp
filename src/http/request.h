@@ -24,7 +24,7 @@ struct Request {
 // obsolete header folding, duplicate Content-Length, Content-Length together
 // with Transfer-Encoding, non-token method/name characters, unknown versions.
 class RequestParser {
-  public:
+public:
     struct Limits {
         std::size_t maxHeadBytes = 64 * 1024;
         std::size_t maxBodyBytes = 8 * 1024 * 1024;
@@ -60,7 +60,7 @@ class RequestParser {
 
     std::size_t bufferedBytes() const { return buf_.size() - pos_; }
 
-  private:
+private:
     enum class State { RequestLine, Headers, Body, Done, Failed };
 
     bool parseRequestLine();
@@ -70,8 +70,8 @@ class RequestParser {
 
     Limits limits_;
     std::string buf_;
-    std::size_t pos_ = 0;   // first unparsed byte (request line / header scan cursor)
-    std::size_t scan_ = 0;  // offset already searched for the header terminator
+    std::size_t pos_ = 0;        // first unparsed byte (request line / header scan cursor)
+    std::size_t scan_ = 0;       // offset already searched for the header terminator
     std::size_t head_start_ = 0; // first byte of the current request line
     State state_ = State::RequestLine;
     Error error_ = Error::None;

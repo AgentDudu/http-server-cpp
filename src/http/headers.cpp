@@ -27,8 +27,7 @@ bool isTokenChar(char c) {
     // tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+" / "-" / "." / "^" /
     //         "_" / "`" / "|" / "~" / DIGIT / ALPHA
     static const char* extras = "!#$%&'*+-.^_`|~";
-    return std::isalnum(static_cast<unsigned char>(c)) != 0 ||
-           std::strchr(extras, c) != nullptr;
+    return std::isalnum(static_cast<unsigned char>(c)) != 0 || std::strchr(extras, c) != nullptr;
 }
 
 std::string trimField(std::string value) {

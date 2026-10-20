@@ -13,7 +13,7 @@ namespace http {
 // Unless Transfer-Encoding declares chunked, a Content-Length is implied by the
 // body and written automatically when not set explicitly.
 class Response {
-  public:
+public:
     explicit Response(Status status = Status::OK) : status_(status) {}
 
     Status status() const { return status_; }
@@ -36,7 +36,7 @@ class Response {
     // Head + body. Empty string if head serialization fails.
     std::string serialize() const;
 
-  private:
+private:
     bool chunked() const;
 
     Status status_;
@@ -47,6 +47,8 @@ class Response {
 // chunk-size (lowercase hex) CRLF data CRLF
 std::string encodeChunk(std::string_view data);
 // The zero-size final chunk.
-inline std::string encodeLastChunk() { return "0\r\n\r\n"; }
+inline std::string encodeLastChunk() {
+    return "0\r\n\r\n";
+}
 
 } // namespace http

@@ -39,9 +39,8 @@ TEST_CASE("valid minimal GET") {
 
 TEST_CASE("fields, headers, body") {
     RequestParser p;
-    REQUIRE(feedAndParse(p,
-                         "POST /up HTTP/1.0\r\nHost: h\r\nContent-Length: 5\r\nX-A: 1\r\n"
-                         "X-A: 2\r\n\r\nhello") == RequestParser::Result::Request);
+    REQUIRE(feedAndParse(p, "POST /up HTTP/1.0\r\nHost: h\r\nContent-Length: 5\r\nX-A: 1\r\n"
+                            "X-A: 2\r\n\r\nhello") == RequestParser::Result::Request);
     const auto& r = p.request();
     CHECK(r.method == "POST");
     CHECK(r.version == "1.0");
@@ -80,9 +79,8 @@ TEST_CASE("never reads past declared body") {
 
 TEST_CASE("pipelined requests, one buffer") {
     RequestParser p;
-    REQUIRE(feedAndParse(p,
-                         "GET /one HTTP/1.1\r\n\r\n"
-                         "GET /two HTTP/1.1\r\n\r\n") == RequestParser::Result::Request);
+    REQUIRE(feedAndParse(p, "GET /one HTTP/1.1\r\n\r\n"
+                            "GET /two HTTP/1.1\r\n\r\n") == RequestParser::Result::Request);
     CHECK(p.request().target == "/one");
     p.reset();
     REQUIRE(p.next() == RequestParser::Result::Request);
@@ -96,8 +94,7 @@ TEST_CASE("byte-at-a-time feed completes") {
 
 TEST_CASE("empty lines before request line are skipped") {
     RequestParser p;
-    CHECK(feedAndParse(p, "\r\n\r\nGET / HTTP/1.1\r\n\r\n") ==
-          RequestParser::Result::Request);
+    CHECK(feedAndParse(p, "\r\n\r\nGET / HTTP/1.1\r\n\r\n") == RequestParser::Result::Request);
     CHECK(p.request().target == "/");
 }
 
@@ -110,11 +107,9 @@ TEST_CASE("bad requests are rejected") {
         {"no spaces", "GET /\r\n\r\n", RequestParser::Error::BadRequest},
         {"extra space", "GET   / HTTP/1.1\r\n\r\n", RequestParser::Error::BadRequest},
         {"bad version", "GET / HTTP/2.0\r\n\r\n", RequestParser::Error::VersionNotSupported},
-        {"version suffix", "GET / HTTP/1.15\r\n\r\n",
-         RequestParser::Error::VersionNotSupported},
+        {"version suffix", "GET / HTTP/1.15\r\n\r\n", RequestParser::Error::VersionNotSupported},
         {"method not token", "G[T / HTTP/1.1\r\n\r\n", RequestParser::Error::BadRequest},
-        {"header no colon", "GET / HTTP/1.1\r\nbroken\r\n\r\n",
-         RequestParser::Error::BadRequest},
+        {"header no colon", "GET / HTTP/1.1\r\nbroken\r\n\r\n", RequestParser::Error::BadRequest},
         {"header no name", "GET / HTTP/1.1\r\n: v\r\n\r\n", RequestParser::Error::BadRequest},
         {"obs fold", "GET / HTTP/1.1\r\nA: 1\r\n b\r\n\r\n", RequestParser::Error::BadRequest},
         {"bare LF in headers", "GET / HTTP/1.1\r\nA: 1\nB: 2\r\n\r\n",

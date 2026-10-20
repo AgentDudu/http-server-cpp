@@ -7,16 +7,22 @@
 namespace net {
 namespace detail {
 
-handle_t rawSocket() { return ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); }
+handle_t rawSocket() {
+    return ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+}
 
-int rawClose(handle_t handle) { return ::closesocket(handle); }
+int rawClose(handle_t handle) {
+    return ::closesocket(handle);
+}
 
 bool rawSetNonBlocking(handle_t handle, bool enabled) {
     u_long mode = enabled ? 1UL : 0UL;
     return ::ioctlsocket(handle, FIONBIO, &mode) != SOCKET_ERROR;
 }
 
-handle_t rawAccept(handle_t listener) { return ::accept(listener, nullptr, nullptr); }
+handle_t rawAccept(handle_t listener) {
+    return ::accept(listener, nullptr, nullptr);
+}
 
 // Winsock: the accepted socket already inherited the listener's blocking mode.
 void rawAfterAccept(handle_t, handle_t) {}

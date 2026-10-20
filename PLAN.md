@@ -175,13 +175,13 @@ phase/step/milestone wording, ever.
 | C | `feature/ci-matrix` | Actions matrix: Linux job = sanitizer container (`tools/asan-inside.sh`), Windows = native MinGW + ctest | merged — PR #5 gated itself green on first run |
 | R | `feature/reactor-and-connection` | single-threaded poll reactor: connection state machine, timeouts (408), POLLOUT backpressure, signals (self-pipe / console ctrl), graceful drain | merged — 200/keep-alive/408/400/stop integration tests; ASan + TSan green; SIGINT-exit-0 smoke in the Linux gate |
 | T | `feature/reactor-threading` | acceptor thread + K reactors + hand-off inbox; `Connection` stays owned by one reactor | TSan green on concurrent tests; RSS stays flat |
-| S | `feature/static-files` | root mapping, traversal guard, MIME, index, 404/405, error pages (`std::filesystem`) | status-by-status integration tests; traversal rejected on both OSes |
+| ✓ | ~~`feature/static-files`~~ | root mapping, traversal guard, MIME, index, 404/405, HEAD (`std::filesystem`) + per-connection write cap | merged — traversal/HEAD/405/slow-loris/pipelined-burst tests both OSes; ASan + TSan green |
 | G | `feature/caching-and-range` | ETag, Last-Modified, If-None-Match, Range/206/416 | 304 + 206 tests incl. multi-range rejection |
-| H | `feature/hardening` | pipelining, slow-body limit, max-body/max-heads, request-smuggling corpus, soak | pipelined + slow-client tests; ASan clean; 60 s soak flat RSS on Linux |
+| H | `feature/hardening` | slow-body limit, smuggling corpus, soak (pipelining + slow-client tests landed with S) | ASan clean; 60 s soak flat RSS on Linux |
 | D | `feature/docs-and-benchmark` | README (build/run per OS, limits), load script, numbers | documented; req/s + RSS recorded on both platforms |
 
 Then `release/0.1.0` → `develop` + PR to `main` (approval required) → tag `v0.1.0`.
-R merged single-threaded; S (static files) stacks on it — T (threading) can land after S.
+R merged single-threaded; S (static files) merged on top — T (threading) can land next.
 
 ## 8. Git workflow (gitflow)
 

@@ -3,9 +3,11 @@
 #include "http/request.h"
 #include "http/status.h"
 #include "net/socket.h"
+#include "server/handler.h"
 #include "util/time.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -13,15 +15,16 @@
 namespace server {
 
 // One keep-alive HTTP connection driven by reactor callbacks. Reads requests
-// through http::RequestParser, renders responses through the shared handler,
-// buffers outbound bytes, and closes when told (idle timeout, parse error,
+// through http::RequestParser, renders replies through the shared handler,
+// buffers outbound bytes — capped, so a slow reader cannot make the server
+// hoard responses — and closes when told (idle timeout, parse error,
 // Connection: close, or server shutdown).
 class Connection {
-  public:
-    // Renders the body for one request. Must not retain request views.
-    using Handler = std::function<std::string(const http::Request&)>;
+public:
+    using Handler = ::server::Handler;
 
-    Connection(net::Socket socket, const Handler& handler, std::chrono::milliseconds idle);
+    Connection(net::Socket socket, const Handler& handler, std::chrono::milliseconds idle,
+               std::size_t max_queued);
 
     Connection(const Connection&) = delete;
     Connection& operator=(const Connection&) = delete;
@@ -38,16 +41,22 @@ class Connection {
     // Finish what is queued, then close; no further reads.
     void beginShutdown();
 
-  private:
-    void respond(http::Status status, std::string_view body, bool closeAfter);
-    // Maps http::RequestParser::Error; returns false once the connection is dying.
-    bool drainParser();
+private:
+    enum class Drain { NeedInput, Throttled, Done };
+
+    Drain drainParser();
+    // drainParser + immediate flush, re-draining when a throttle freed up; a
+    // throttle that could not flush leaves POLLOUT armed for onWritable.
+    Drain drainAndPump();
+    void respond(const Reply& reply, bool closeAfter, bool omitBody);
     void flush();
     void close();
+    std::size_t pending() const { return out_.size() - out_off_; }
 
     net::Socket sock_;
     const Handler* handler_;
     std::uint64_t idle_ms_;
+    std::size_t max_queued_;
     http::RequestParser parser_;
     std::string out_;
     std::size_t out_off_ = 0;

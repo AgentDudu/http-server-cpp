@@ -37,7 +37,7 @@ ShutdownSignals::ShutdownSignals() : impl_(std::make_unique<Impl>()) {
         return; // degraded: reactor still re-checks after every poll
     }
     g_impl = impl_.get();
-    struct sigaction sa {};
+    struct sigaction sa{};
     sa.sa_handler = onSignal;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART; // send/poll EINTR handling exists, but avoid churn
@@ -53,7 +53,9 @@ ShutdownSignals::~ShutdownSignals() {
     }
 }
 
-bool ShutdownSignals::stopRequested() const { return g_stop.load(); }
+bool ShutdownSignals::stopRequested() const {
+    return g_stop.load();
+}
 
 void ShutdownSignals::preparePoll(net::PollSet& set) {
     if (impl_->pipe[0] >= 0) {

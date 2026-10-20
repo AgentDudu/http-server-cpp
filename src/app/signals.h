@@ -13,7 +13,7 @@ namespace app {
 // Windows: the handler sets a flag and blocks (a returning handler means "handled,
 // exit now" would kill the graceful drain); the reactor notices within pollCap().
 class ShutdownSignals final : public server::ShutdownSignal {
-  public:
+public:
     struct Impl; // OS state, defined in the per-OS .cpp
 
     ShutdownSignals();
@@ -25,7 +25,7 @@ class ShutdownSignals final : public server::ShutdownSignal {
     std::chrono::milliseconds pollCap() const override;
     void notifyStopped() override;
 
-  private:
+private:
     std::unique_ptr<Impl> impl_;
 };
 

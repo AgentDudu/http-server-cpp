@@ -7,7 +7,7 @@ namespace net {
 // Process-wide socket subsystem session. One instance, created before any Socket,
 // destroyed after the last Socket dies. No-op on POSIX.
 class Context {
-  public:
+public:
     Context();
     ~Context();
     Context(const Context&) = delete;
@@ -16,7 +16,7 @@ class Context {
     bool ok() const { return ok_; }
     int version() const { return version_; } // Winsock level on Windows, 0 on POSIX
 
-  private:
+private:
 #ifdef _WIN32
     WSADATA wsaData_;
 #endif

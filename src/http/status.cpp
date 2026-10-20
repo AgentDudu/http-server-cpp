@@ -62,6 +62,8 @@ std::string_view reasonPhrase(Status status) {
     return "Unknown";
 }
 
-bool statusOmitsBody(int code) { return code < 200 || code == 204 || code == 304; }
+bool statusOmitsBody(int code) {
+    return code < 200 || code == 204 || code == 304;
+}
 
 } // namespace http

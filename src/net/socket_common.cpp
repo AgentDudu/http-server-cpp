@@ -7,7 +7,9 @@
 
 namespace net {
 
-Socket Socket::tcp4() { return Socket(detail::rawSocket()); }
+Socket Socket::tcp4() {
+    return Socket(detail::rawSocket());
+}
 
 bool Socket::setNonBlocking(bool enabled) {
     return valid() && detail::rawSetNonBlocking(handle_, enabled);
@@ -67,8 +69,7 @@ bool Socket::connect(const sockaddr_in& address) {
     if (!valid()) {
         return false;
     }
-    return ::connect(handle_, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) !=
-           -1;
+    return ::connect(handle_, reinterpret_cast<const sockaddr*>(&address), sizeof(address)) != -1;
 }
 
 bool Socket::close() {
@@ -107,8 +108,7 @@ int Socket::recvSome(void* buffer, std::size_t capacity) {
     if (!valid()) {
         return -1;
     }
-    return detail::rawRecv(
-        handle_, buffer, std::min(capacity, static_cast<std::size_t>(INT_MAX)));
+    return detail::rawRecv(handle_, buffer, std::min(capacity, static_cast<std::size_t>(INT_MAX)));
 }
 
 } // namespace net
