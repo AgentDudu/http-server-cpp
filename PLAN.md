@@ -172,7 +172,7 @@ phase/step/milestone wording, ever.
 | ✓ | ~~`feature/socket-layer`~~ | Winsock RAII, non-blocking, WSAPoll | merged |
 | ✓ | ~~`feature/response-writer`~~ | Response, headers, status, chunk encoder | merged |
 | ✓ | ~~`feature/posix-socket-layer`~~ | The seam: portable `net/` API + `raw_win`/`raw_posix` backends; `accept4` + `MSG_NOSIGNAL` + `EINTR`; cross-platform socket tests; Docker gate builds whole Linux tree | merged — both gates green |
-| C | `feature/ci-matrix` | GitHub Actions `ubuntu + windows` matrix, ASan job on Linux, `ck.ps1`/container parity with CI | PR #next is gated by it |
+| C | `feature/ci-matrix` | Actions matrix: Linux job = sanitizer container (`tools/asan-inside.sh`), Windows = native MinGW + ctest | merged — PR #5 gated itself green on first run |
 | R | `feature/reactor-and-connection` | poll loop, connection state machine, hand-off inbox, timeouts, buffering, signals (win + posix), graceful shutdown — all single-source except `app/signals_*` | integration: in-memory 200, keep-alive, 408 idle, Ctrl-C/SIGTERM exit 0; **TSan job added and green** |
 | S | `feature/static-files` | root mapping, traversal guard, MIME, index, 404/405, error pages (`std::filesystem`) | status-by-status integration tests; traversal rejected on both OSes |
 | G | `feature/caching-and-range` | ETag, Last-Modified, If-None-Match, Range/206/416 | 304 + 206 tests incl. multi-range rejection |
