@@ -8,15 +8,16 @@
 
 namespace http {
 
-// A complete HTTP/1.x request. method/target/body view bytes owned by the
-// parser's buffer: valid until reset() or the next feed() that appends data —
-// consume a request before feeding more (the reactor does).
+// A complete HTTP/1.x request. The parser OWNS every byte here: views into
+// its working buffer die when a later feed() reallocates it, so the parser
+// copies method/target/version/body the moment a request completes — a
+// Request handed out by next() stays valid across reset() and further feeds.
 struct Request {
-    std::string_view method;
-    std::string_view target;
-    std::string_view version; // "1.0" or "1.1"
-    Headers headers;          // owned copies, parse order preserved
-    std::string_view body;    // empty unless Content-Length was present
+    std::string method;
+    std::string target;
+    std::string version; // "1.0" or "1.1"
+    Headers headers;     // owned copies, parse order preserved
+    std::string body;    // empty unless Content-Length was present
 };
 
 // Push parser: feed() raw bytes, call next() until Request/Error. Enforces the
@@ -55,6 +56,10 @@ public:
 
     // Valid only after Result::Request.
     bool keepAlive() const;
+    // No request bytes since the last reset(): the stream waits for a fresh
+    // request line. An idle keep-alive timeout should then just close (RFC
+    // 9112), not answer 408 to a request that was never started.
+    bool idle() const { return state_ == State::RequestLine && buf_.empty(); }
 
     void reset();
 
