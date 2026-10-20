@@ -26,14 +26,25 @@ if(HTTP_SERVER_ENABLE_SANITIZERS)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
+add_library(net STATIC src/net/socket.cpp src/net/wsa.cpp)
+target_include_directories(net PUBLIC src)
+target_link_libraries(net PUBLIC ws2_32)
+target_compile_options(net PRIVATE
+  -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
+
 add_executable(http_server src/main.cpp)
+target_link_libraries(http_server PRIVATE net)
+
 target_compile_options(http_server PRIVATE
   -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
 
 enable_testing()
 
-add_executable(unit_tests tests/test_main.cpp)
+add_executable(unit_tests
+  tests/test_main.cpp
+  tests/test_socket.cpp)
 target_include_directories(unit_tests SYSTEM PRIVATE external/doctest)
+target_link_libraries(unit_tests PRIVATE net)
 # doctest is a vendored header: warnings from it are not ours to fix,
 # hence SYSTEM above; our own test code still builds warning-clean.
 target_compile_options(unit_tests PRIVATE -Wall -Wextra -Werror)
