@@ -17,6 +17,22 @@ jobs:
           docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src http-cpp-asan \
             bash tools/asan-inside.sh
 
+  # Concurrency gate: reactor tests under ThreadSanitizer (Linux only; no TSan
+  # runtime on the Windows MinGW toolchain). Native runner, not a container:
+  # TSan needs vm.mmap_rnd_bits=28, which kernel 6.x containers cannot set.
+  linux-tsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Widen TSan address space
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ cmake ninja-build netcat-openbsd
+      - name: Build and test under TSan
+        run: SAN=thread bash tools/asan-inside.sh
+
   # Windows native gate: MinGW gcc, warnings-as-errors, ctest.
   windows-native:
     runs-on: windows-latest

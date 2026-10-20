@@ -21,8 +21,20 @@ until then.
   push/incremental, enforces head/body/count limits, and rejects bare-LF endings,
   obsolete folding, duplicate `Content-Length`, `Content-Length`+`Transfer-Encoding`,
   non-token names/methods, unknown versions. Pending: URL decode/normalise, MIME.
-- `app/` — signal handling (pending, win + posix)
-- `server/` — listener, connection, static file handler (pending)
+- `server/` — single-threaded poll reactor (`Server::run`): accept batch, per-connection
+  deadlines (408), backpressure via POLLOUT, graceful stop (drain queued responses,
+  grace cap, then drop). `Connection` = socket + `RequestParser` + output buffer;
+  protocol errors are answered once (best effort) then the connection drops —
+  smuggling candidates never share a stream. `ShutdownSignal` is the pluggable stop
+  trigger; tests drive it directly.
+- `app/` — shutdown signals, one paragraph precisely because behaviour differs:
+  Linux uses a self-pipe (`pipe2`, handler writes one byte → poll wakes instantly,
+  SIGINT drains and exits 0 — smoke-tested in the container gate); Windows cannot
+  union a waitable event with WSAPoll, so the console-control handler sets a flag
+  and blocks until the loop ends (`notifyStopped()`), with the reactor capped at a
+  100 ms poll while idle. A returning handler would mean "exit now" — hence block.
 
-Gates: `tools/ck.ps1` (Windows) and `tools/ck-asan-docker.sh` (whole tree, ASan+UBSan,
-Ubuntu 24.04 container). The socket test file is the same source on both platforms.
+Gates: `tools/ck.ps1` (Windows), `tools/ck-asan-docker.sh` (whole tree, ASan+UBSan,
+Ubuntu 24.04 container, plus SIGINT graceful-stop smoke), and TSan (`SAN=thread`,
+Linux runner — kernel containers can't set the `vm.mmap_rnd_bits` TSan needs).
+The socket and server test files are the same source on both platforms.

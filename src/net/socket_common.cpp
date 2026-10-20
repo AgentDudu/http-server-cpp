@@ -96,6 +96,13 @@ bool Socket::sendAll(const char* data, std::size_t len) {
     return true;
 }
 
+int Socket::sendSome(const char* data, std::size_t len) {
+    if (!valid() || len == 0) {
+        return -1;
+    }
+    return detail::rawSend(handle_, data, std::min(len, static_cast<std::size_t>(INT_MAX)));
+}
+
 int Socket::recvSome(void* buffer, std::size_t capacity) {
     if (!valid()) {
         return -1;

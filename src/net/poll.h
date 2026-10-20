@@ -8,6 +8,13 @@
 
 namespace net {
 
+// Portable poll event bits (POLL* spellings differ across OS headers).
+inline constexpr short PollIn = POLLIN;
+inline constexpr short PollOut = POLLOUT;
+inline constexpr short PollErr = POLLERR;
+inline constexpr short PollHup = POLLHUP;
+inline constexpr short PollNval = POLLNVAL;
+
 // Thin poll()/WSAPoll fd set. Only the first pollSockets() return value of entries
 // carry meaningful revents (Windows leaves the rest untouched).
 class PollSet {

@@ -46,6 +46,9 @@ class Socket {
     // WouldBlock failure returns false; check lastError().kind. The reactor never
     // uses it; it buffers per-connection instead.
     bool sendAll(const char* data, std::size_t len);
+    // What the kernel accepts right now: >0 bytes, -1 error (WouldBlock possible on
+    // a non-blocking socket — check lastError().kind). The reactor's write path.
+    int sendSome(const char* data, std::size_t len);
     // >0 bytes read, 0 peer closed, -1 error (WouldBlock possible on non-blocking).
     int recvSome(void* buffer, std::size_t capacity);
 
