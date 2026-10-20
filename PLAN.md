@@ -1,8 +1,12 @@
-# http-server-cpp — Build Plan
+# http-server-cpp — Build Plan (v2, dual-platform)
 
-Small, clean, single-binary HTTP/1.1 file server in C++20. Windows-native. No network
-library in the shipped binary. Portfolio artifact: readability and correctness are the
-deliverables, raw throughput is not.
+Small, clean, single-binary HTTP/1.1 file server in C++20. Runs natively on Windows and
+Linux. No network library in the shipped binary. Portfolio artifact: readability and
+correctness are the deliverables, raw throughput is not.
+
+v2 change: Linux became a first-class target. The split happens **before the reactor
+exists** — reactor, signals, shutdown, file serving, and all their tests are written
+cross-platform from their first commit.
 
 ---
 
@@ -13,11 +17,14 @@ deliverables, raw throughput is not.
 | Goal | Portfolio artifact, small and clean | Optimise for readable code + honest tests, not feature count |
 | HTTP | HTTP/1.1 server core: methods, status codes, chunked, keep-alive, pipelining | Contract with every real client |
 | Content | Static files, MIME, index, ETag/`If-Modified-Since`, `Range` | Makes it actually usable |
-| I/O | Non-blocking sockets, `WSAPoll`, K reactor threads, per-connection timeouts, graceful shutdown | Windows-native; scales without a thread per client |
-| Standard | C++20 | Full support in GCC 13.2; C++23 stdlib is partial on MinGW |
-| Compiler | MinGW-w64 GCC 13.2 (`ucrt-posix-seh`) + CMake 3.29 + Ninja | Installed; no MSVC/clang on host |
-| Deps | doctest (tests only). Server binary: std + Winsock only | Zero third-party code shipped |
+| Platforms | Windows (native, MinGW-w64) **and** Linux (GCC in Docker) | v2; both built, tested, and sanitised on every PR |
+| I/O | Non-blocking sockets, **`poll()` / `WSAPoll()` everywhere**, K reactor threads, per-connection timeouts, graceful shutdown | Same `pollfd` semantics on both; reactor stays single-source |
+| Event engines | No epoll/io_uring/IOCP backend abstraction | poll is right-sized for a file server; engines need a benchmark to justify them, and we have none |
+| Standard | C++20 | Full support on both GCC 15.2 (MinGW) and Ubuntu 24.04's GCC 13 |
+| Deps | doctest (tests only, vendored). Server binary: std + platform socket API only | Zero third-party code shipped |
 | Config | CLI flags: `--port --root --threads --max-body --timeout --log-level` | A config file is one more parser to justify |
+| Linux toolchain | Docker-only on this host (`http-cpp-asan` image: Ubuntu 24.04, g++, cmake, ninja) | No WSL distro; CI mirrors the container exactly |
+| CI | GitHub Actions matrix `ubuntu-latest` + `windows-latest` on every PR to `develop`; ASan native on Linux; TSan once the reactor lands | Linux CI turns the fake sanitizer gates real |
 
 ## 2. Explicit non-goals
 
@@ -25,45 +32,46 @@ deliverables, raw throughput is not.
 - TLS / HTTPS — needs a crypto dependency; violates the deps policy.
 - CGI, subprocess execution, embedded route handlers.
 - WebSocket upgrade.
-- Linux/macOS support, and the portable socket-abstraction layer that would imply.
-- IOCP. `WSAPoll` meets the concurrency target; IOCP doubles the async surface.
+- macOS/kqueue (poll() portability means it likely works; we will not claim or test it).
+- epoll/io_uring/IOCP event engines — revisit only with benchmark evidence.
 - IPv6. IPv4 first; documented as a limitation.
-- Daemon/service mode, Windows event log. stderr logging with levels.
+- Daemon/service mode, Windows event log, systemd unit files. stderr logging with levels.
 
 ## 3. Architecture
+
+One codebase, one seam. Everything above `net/` never sees a platform macro.
 
 ```
                      ┌──────────────────────────────┐
   client ── TCP ──►  │  listener (non-blocking)     │
                      └──────────────┬───────────────┘
-                                    │ round-robin hand-off
-              ┌─────────────────────┴─────────────────────┐
-              ▼                     ▼                     ▼
-      ┌───────────────┐     ┌───────────────┐      ┌───────────────┐
-      │ reactor 0     │     │ reactor 1     │ ...  │ reactor K-1   │
-      │ WSAPoll loop  │     │ WSAPoll loop  │      │ WSAPoll loop  │
-      │ conns owned   │     │ conns owned   │      │ conns owned   │
-      └───────┬───────┘     └───────────────┘      └───────────────┘
-              │ drives
+                                    │ round-robin hand-off (mutex-protected inbox;
+              ┌─────────────────┬───┴────────────────┬─────────────┐   TSan-proven in CI)
+              ▼                 ▼                    ▼
+      ┌───────────────┐  ┌───────────────┐   ┌───────────────┐
+      │ reactor 0     │  │ reactor 1     │ … │ reactor K-1   │
+      │ poll loop     │  │ poll loop     │   │ poll loop     │
+      │ conns owned   │  │ conns owned   │   │ conns owned   │
+      └───────┬───────┘  └───────────────┘   └───────────────┘
               ▼
       Connection state machine ──► http::Request ──► StaticFileHandler ──► http::Response
-        (parse / serve / close)                          │
-                                                   FileCache-less: stat + open
-                                                   per request, size-capped reads
+
+  src/http, src/server, reactor, connection  ─── single source
+  src/net:  socket.h poll.h error.h (portable API)
+            raw_win.cpp (Winsock)    raw_posix.cpp (BSD)     ← the only seam
 ```
 
 **Ownership rule.** A `Connection` is created by exactly one reactor and destroyed by
-that same reactor. Reactors share nothing mutable except the listen socket. This is the
-substitute for TSan: the design has no data race to find.
+that same reactor. The one shared structure is the per-reactor hand-off inbox, guarded
+by a short-held mutex — proof is TSan in Linux CI, not vibes.
 
-**Reactor loop (per thread).**
-1. `WSAPoll(fds, timeout = smallest remaining deadline)`.
-2. Ready listener → `accept` (non-blocking, loop on `WOULDBLOCK`), hand `Connection` to
-   next reactor.
+**Reactor loop (per thread, single source).**
+1. `poll()` / `WSAPoll()` with timeout = smallest remaining deadline.
+2. Ready listener → accept loop (non-blocking), hand `Connection` to next reactor inbox.
 3. Ready connection → drive state machine: `RECV` → `PARSE` → `SERVE` → `SEND` →
    `KEEP_ALIVE` or `CLOSE`.
 4. Expired deadline (idle / slow-body / send) → `408` or `400` then close.
-5. Shutdown requested → stop accepting, drain or timeout in-flight, join, `WSACleanup`.
+5. Shutdown flag set → stop accepting, drain or timeout in-flight, join, cleanup.
 
 **Connection state machine**
 
@@ -80,132 +88,138 @@ substitute for TSan: the design has no data race to find.
               CLOSING (graceful: flush, shutdown(SD_SEND), close)
 ```
 
-**Failure policy.** Every socket error closes the connection, never the process. No
-exceptions cross the reactor boundary — error codes at the socket layer, `Result`-style
-returns in `http`, exceptions confined to setup.
+**Failure policy.** Every socket error closes the connection, never the process. Error
+codes cross the seam as `net::Error { WouldBlock | Interrupted | Closed | Other, code }`
+mapped from `WSAGetLastError()`/`errno` inside `net/`. No exceptions cross the reactor
+boundary; exceptions confined to setup.
+
+### 3.1 Platform traps — planned, not discovered
+
+| Trap | Windows | Linux |
+|---|---|---|
+| Accepted socket blocking mode | **inherits** listener's non-blocking | **does not inherit** → `accept4(SOCK_NONBLOCK \| SOCK_CLOEXEC)`, fallback `fcntl` |
+| Send to dead peer | `send` → `WSAECONNRESET`, no signal | `SIGPIPE` kills process → `MSG_NOSIGNAL` on every send |
+| Interrupted calls | effectively none | `EINTR` on `poll`/`read`/`write` → retry loop |
+| Process shutdown | `SetConsoleCtrlHandler`, poll-timeout-bounded | `SIGINT`/`SIGTERM` → self-pipe wakes poll |
+| Session lifecycle | `WSAStartup`/`WSACleanup` in `net::Context` | no-op in `net::Context` |
+| Address reuse | `SO_REUSEADDR` | `SO_REUSEADDR` (no `SO_EXCLUSIVEADDRUSE` analogue needed) |
+| `select` legacy ceiling | n/a (`WSAPoll` used) | n/a (`poll()` used) |
 
 ## 4. Layout
 
 ```
-CMakeLists.txt            CMakePresets.json
-cmake/                    warnings + sanitar presets
+CMakeLists.txt            CMakePresets.json (Windows; Linux configures inside container)
+cmake/
+.github/workflows/ci.yml  matrix: ubuntu-latest, windows-latest + sanitizers
 src/
-  main.cpp                flags, logger, signal handler, start/stop
-  net/    socket.h/.cpp   RAII SOCKET, WsaContext, non-blocking, WSAPoll wrapper
-          reactor.h/.cpp  poll loop, connection registry, hand-off, shutdown
-          connection.*    state machine, buffered read/write, deadlines
-  http/   request.*       incremental parser (state machine, no full-buffer copies)
-          response.*      status, headers, body/file part, chunked encoder
-          headers.*       case-insensitive table
-          mime.*          extension → content-type
-          status.*        code → reason phrase
-          url.*           percent-decode, dot-segment normalisation
-  server/ server.*        owns listener + reactors, config → runtime
-          static_file.*   root mapping, traversal guard, ETag, Last-Modified, Range
-include/                  (only if a public lib target is ever wanted; else none)
-tests/                    doctest: unit + integration (loopback, ephemeral port)
+  main.cpp                flags, logger, start/stop
+  app/    signals_win.cpp / signals_posix.cpp   → sets shutdown flag, wakes reactor
+  net/    socket.h poll.h error.h context.h detail.h detail_raw.h   portable API
+          socket_common.cpp shared socket logic
+          raw_win.cpp error_win.cpp context_win.cpp        Winsock backend
+          raw_posix.cpp error_posix.cpp context_posix.cpp  BSD socket backend
+  http/   request.* response.* headers.* mime.* status.* url.*   (response/headers/status landed)
+  server/ server.* static_file.*               single source, std::filesystem
+include/                  (none unless a public lib target is ever wanted)
+tests/                    doctest: unit + integration, cross-platform
 tests/corpus/             parser test vectors (valid + malformed)
-tools/ck.ps1              build + test + format + sanitize, one command
+tools/ck.ps1              Windows gate: build + test + format + staged-secrets guard
+tools/ck-asan-docker.sh   Linux gate: full tree (net+http+server) ASan+UBSan
+tools/ck-tsan-docker.sh   Linux gate: TSan on threaded reactor tests (once reactor lands)
+tools/Dockerfile.asan     Ubuntu 24.04 + g++ + cmake + ninja
 docs/ARCHITECTURE.md
 ```
 
 ## 5. Build, run, gates
 
-Presets: `gcc-debug`, `gcc-release`, `gcc-asan` (+`ubsan`).
+Windows: presets `gcc-debug`, `gcc-release` (MinGW pinned absolutely, static runtime —
+PATH-proof binaries). Linux: configure/build inside the `http-cpp-asan` image; no host
+toolchain. `ctest` on both. CI matrix runs both plus ASan (and TSan post-reactor).
 
-```
-cmake --preset gcc-debug  && cmake --build --preset gcc-debug
-ctest --preset gcc-debug            # unit + integration
-tools/ck.ps1                        # warnings-off, tests, asan run, format check
-```
+Flags both platforms: `-std=c++20 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror`.
+Windows additionally: `_WIN32_WINNT=0x0A00`, link `ws2_32`, `-static`.
 
-Flags: `-std=c++20 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror`,
-`_WIN32_WINNT=0x0A00`, link `ws2_32`. Release: `-O2`. ASan build for parser + connection
-runs. Formatting: `clang-format`, enforced by `--dry-run -Werror` in `tools/ck.ps1`
-(skipped with a visible warning when the tool is absent).
-
-**Sanitizer reality (verified on this host):** MinGW-w64 GCC 13.2 and 15.2 installs both
-lack `libasan`/`libubsan`, and GCC has no TSan on Windows at all. `gcc-asan` preset
-therefore self-detects and fails configure with a clear message; `ck.ps1` skips the
-native ASan gate with a loud warning. Replacement gate: platform-neutral unit tests
-(parser, URL, MIME, Range) run under ASan in a Linux Docker container.
-
-Windows notes that will bite, handled up front:
-- `WSAStartup`/`WSACleanup` owned by a single RAII context in `main`.
-- No `SIGPIPE` on Windows; `send` returns `WSAECONNRESET`/`WSAENOTCONN` → treat as client
-  gone, close quietly.
-- No `SIGTERM`; graceful shutdown via `SetConsoleCtrlHandler` (`CTRL_C_EVENT`,
-  `CTRL_CLOSE_EVENT`) plus a self-pipe/`PostQueuedCompletionStatus`-free wake: reactor
-  poll timeout bounds shutdown latency.
-- `closesocket` on a socket blocked in another thread does not reliably unblock — the
-  reactor owns its sockets, so shutdown is a flag flip, and `WSAPoll` returns on timeout.
-- Console UTF-8 output set once (`SetConsoleOutputCP`).
+**Sanitizer reality (verified).** MinGW-w64 here has no `libasan`/`libubsan` and no TSan
+on Windows at all. Therefore: ASan+UBSan (leak check on) **native on Linux CI** for the
+whole tree; TSan **Linux CI** for reactor/concurrency tests. `gcc-asan` Windows preset
+self-detects and fails with guidance; `ck.ps1` warns and skips. `tools/ck-asan-docker.sh`
+verified green on `http/`.
 
 ## 6. Testing strategy
 
-| Layer | Tool | Covers |
+| Layer | Where | Covers |
 |---|---|---|
-| Unit | doctest | parser (byte-exact state transitions), header table, URL decode/normalise, MIME, Range parse+merge, chunked encode/decode, timeout math |
-| Corpus | doctest over `tests/corpus/*` | malformed/request-smuggle cases; deterministic replay stands in for a fuzzer (libFuzzer absent on MinGW) |
-| Integration | doctest + real loopback sockets | full request→file→response, 206, 304, 416, 400, 405, 408, keep-alive reuse, pipelined batch, truncated body, oversize header rejection |
-| Concurrency | threads hammering the server | N clients × keep-alive, no leak, no crash, correct counts; ASan build |
-| Load | `curl`/`wrk` if available, else small bundled client | sanity req/s, no fd leak, RSS flat |
+| Unit | both OSes | parser (byte-exact state transitions), headers, URL decode/normalise, MIME, Range, chunked, timeout math |
+| Corpus | both OSes + ASan | malformed / request-smuggling vectors; deterministic replay replaces a fuzzer |
+| Socket | both OSes (once cross-platform) | bind/accept/echo/WOULDBLOCK/EOF — same test file compiled twice |
+| Integration | both OSes | request→file→response, 206, 304, 416, 400, 405, 408, keep-alive, pipelining, truncated body, oversize heads |
+| Concurrency | Linux + TSan | N clients × keep-alive × K reactors × hand-off inbox; no race, no leak, correct counts |
+| Load | Linux (and Windows manually) | sanity req/s, fd leak, RSS flat |
 
-Parser invariants asserted everywhere: never reads past declared body, header count/size
-bounded, total head size bounded, rejects bare LF line folding, rejects duplicate
-`Content-Length`, rejects `Content-Length` + `Transfer-Encoding`.
+Parser invariants asserted everywhere: never reads past declared body, header count and
+sizes bounded, rejects bare-LF folding, duplicate `Content-Length`, and
+`Content-Length` + `Transfer-Encoding` together.
 
 ## 7. Milestones
 
-Each milestone = one `feature/*` branch → PR → `develop`. Exit gate: `tools/ck.ps1`
-green + the listed behaviour proven by a test. Names describe the capability; commit
-messages never reference a phase or step.
+Each milestone = one `feature/*` branch → PR → `develop`. Exit gate: CI green on both
+OSes + the listed behaviour proven by a test. Commit messages: intent only, no
+phase/step/milestone wording, ever.
 
 | # | Branch | Delivers | Exit criterion |
 |---|---|---|---|
-| M0 | `feature/build-scaffold` | CMake + presets, warnings-as-errors, doctest vendored, `.gitignore`, `ck.ps1`, `docs/ARCHITECTURE.md` stub | clean build, "0 tests" run passes |
-| M1 | `feature/socket-layer` | `WsaContext`, RAII `Socket`, non-blocking, `PollSet`, listener binds | unit test: bind/accept/connect/echo on loopback |
-| M2 | `feature/response-writer` | `Response` builder, header serialisation, chunked encoder, status table | byte-exact unit tests incl. CRLF discipline |
-| M3 | `feature/request-parser` | incremental `Request` parser, limits, chunked + `Content-Length` decode, corpus suite | all corpus vectors pass; ASan clean on corpus |
-| M4 | `feature/reactor-and-connection` | poll loop, connection state machine, hand-off, read/write buffering, idle timeout | integration: serves a fixed 200 from memory, keep-alive works, 408 on idle |
-| M5 | `feature/static-files` | root mapping, traversal guard, MIME, index, 404/405, error pages | integration suite for each status; traversal attempts rejected |
-| M6 | `feature/caching-and-range` | ETag, `Last-Modified`/`If-Modified-Since`, `If-None-Match`, `Range`/`206`/`416` | 304 and 206 tests incl. multi-range rejection |
-| M7 | `feature/hardening` | pipelining, slow-body limit, `max-body`/`max-heads` enforcement, graceful shutdown, signal handler | pipelined + slow-client tests; Ctrl-C exits 0 with all fds closed |
-| M8 | `feature/docs-and-benchmark` | README (build/run/limits), load script, RSS/fd soak | documented, numbers recorded, soak 60 s flat RSS |
+| ✓ | ~~`feature/build-scaffold`~~ | CMake, presets, doctest, `ck.ps1` | merged |
+| ✓ | ~~`feature/socket-layer`~~ | Winsock RAII, non-blocking, WSAPoll | merged |
+| ✓ | ~~`feature/response-writer`~~ | Response, headers, status, chunk encoder | merged |
+| ✓ | ~~`feature/posix-socket-layer`~~ | The seam: portable `net/` API + `raw_win`/`raw_posix` backends; `accept4` + `MSG_NOSIGNAL` + `EINTR`; cross-platform socket tests; Docker gate builds whole Linux tree | merged — both gates green |
+| C | `feature/ci-matrix` | Actions matrix: Linux job = sanitizer container (`tools/asan-inside.sh`), Windows = native MinGW + ctest | merged — PR #5 gated itself green on first run |
+| R | `feature/reactor-and-connection` | single-threaded poll reactor: connection state machine, timeouts (408), POLLOUT backpressure, signals (self-pipe / console ctrl), graceful drain | merged — 200/keep-alive/408/400/stop integration tests; ASan + TSan green; SIGINT-exit-0 smoke in the Linux gate |
+| ✓ | ~~`feature/reactor-threading`~~ | acceptor thread + K reactors + socket hand-off inbox (`net::Wakeup`) | merged — cross-reactor keep-alive/pipelining/stop-drain tests; TSan green; EINTR double-join fixed |
+| ✓ | ~~`feature/static-files`~~ | root mapping, traversal guard, MIME, index, 404/405, HEAD (`std::filesystem`) + per-connection write cap | merged — traversal/HEAD/405/slow-loris/pipelined-burst tests both OSes; ASan + TSan green |
+| G | `feature/caching-and-range` | ETag, Last-Modified, If-None-Match, Range/206/416 | merged — 304 (weak/list/star/IMS-precedence) + single-range 206/416 + If-Range tests; multi-range ignored (200) by design; ASan + TSan green |
+| ✓ | ~~`feature/hardening`~~ | slow-body 408 budget, server-level smuggling corpus, env-gated 60 s RSS soak, restored threading suite | merged — corpus proves rejected streams die with the stream and never reach the handler; soak RSS drift < 16 MiB (Linux) |
+| D | `feature/docs-and-benchmark` | README (build/run per OS, limits), bench script, API/BUILDING docs | merged — README/BUILDING/API + `tools/bench-inside.sh`; numbers recorded on Linux (1 KiB keep-alive: 9.8k→47.3k req/s for 1→4 reactors). Windows numbers **not** recorded — no wrk/ab on the Windows box; same code path over Winsock. RSS: 60 s soak 109k iterations, 2.3 MB drift (CI `linux-soak`) |
 
-Then `release/0.1.0` → merge to `develop` + PR to `main` (approval required) → tag `v0.1.0`.
+Then `release/0.1.0` → `develop` + PR to `main` (approval required) → tag `v0.1.0`.
+All phases A–D merged; the release branch and the `main` PR remain.
+
+> **Integrity note (H-phase audit).** `tests/test_connection.cpp`, `tests/test_threads.cpp`,
+> `tests/test_util.cpp`, `tests/test_range.cpp` and a standalone `http::Range` module had
+> only ever existed in the working tree — a botched `commit --amend` chain dropped them
+> from the threading-phase commit, so every CI run since executed a silently smaller
+> suite than reported. The threading suite is restored (`tests/test_threads.cpp`, now
+> genuinely TSan-covered); range/date coverage demonstrably lives inside
+> `tests/test_static.cpp` and `tests/test_date.cpp`, which were committed.
+
 
 ## 8. Git workflow (gitflow)
 
 - `main` — releases only. **I open a PR and stop; merge waits for your approval.**
+  `main` is currently held/absent by explicit decision.
 - `develop` — integration. I push and merge freely here.
-- `feature/<topic>` → `develop`, rebase or squash so develop stays linear.
-- `release/<x.y.z>` → `develop` + `main` with `--no-ff`; bump version; tag `vx.y.z`.
+- `feature/<topic>` → `develop`, rebase-merge so develop stays linear.
+- `release/<x.y.z>` → `develop` + `main` with `--no-ff`; tag `vx.y.z`.
 - `hotfix/<name>` → `main` + `develop`; PR to `main` still needs your approval.
-- Conventional Commits: `feat: incremental request parser`, `fix: reject duplicate Content-Length`,
-  `test: cover multi-range rejection`, `docs: record load-test numbers`.
-  Intent only — **no phase/step/milestone wording in any commit message or branch comment**.
-- One logical change per commit; every commit builds.
-- Bootstrap (needs your OK because it lands a commit on `main`): initial commit on `main`,
-  then `develop`, then M0 starts.
+- Conventional Commits, intent only — never "phase/step/milestone" wording.
+- One logical change per commit; every commit builds on both OSes (CI enforces from C).
+- **Every PR must be green on both Ubuntu and Windows before merge to `develop`.**
 
 ## 9. Security rules for this repo
 
-- No secrets, tokens, or absolute private paths in any tracked file.
-- No credentials in the remote URL; use a credential helper or SSH.
-- Pre-commit eyeball: no `.env`, `*.pem`, `*.key`, `id_rsa`, build output — `.gitignore`
-  covers `build/`, `out/`, `*.obj`, `*.exe`, `.cache/`, `compile_commands.json`.
-- Server-side security is a feature, not an afterthought: path traversal, header
-  smuggling (CRLF in any echoed value — nothing user-controlled is echoed raw), oversized
-  heads/bodies, request smuggling, fd exhaustion caps.
+- No secrets, tokens, or absolute private paths in any tracked file or CI secret-less log.
+- No credentials in the remote URL; `gh` credential helper only.
+- `.gitignore` blocks build output, `.env`, `*.pem`, `*.key`.
+- Server-side security is a feature: path traversal (both separators, dot-segments),
+  header smuggling (nothing user-controlled echoed raw), oversized heads/bodies,
+  request smuggling (`CL.TE`/`TE.CL` corpus cases), fd exhaustion caps, `MSG_NOSIGNAL`.
 
 ## 10. Resolved decisions
 
 1. Remote: `https://github.com/AgentDudu/http-server-cpp.git`, pushed via `gh` CLI
    credential helper — no tokens in remotes, configs, or files.
-2. Default `--root ./www` with a bundled sample tree. Serving the current directory by
-   accident is a footgun; a demo tree also showcases MIME/ETag/Range.
-3. doctest v2.4.11 vendored in `external/doctest/` (single header + LICENSE.txt):
-   offline configure, reviewable, pinned.
-4. `main` is held. Bootstrap and all work happen on `develop`; `main` is created later
-   by a release PR with explicit approval.
+2. Default `--root ./www` with a bundled sample tree.
+3. doctest v2.4.11 vendored in `external/doctest/`.
+4. `main` is held; `develop` is the default branch.
+5. **v2:** Linux is first-class; port happens now (only `net/` is platform-specific —
+   ~250 lines — and nothing above it exists yet). poll() on both OSes; Docker is the
+   Linux toolchain; CI matrix with native ASan + TSan replaces the fake gates.

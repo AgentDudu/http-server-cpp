@@ -1,0 +1,83 @@
+name: ci
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+
+jobs:
+  # Linux gate: the same container image and script as tools/ck-asan-docker.sh.
+  linux-asan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test under ASan+UBSan
+        run: |
+          docker build -q -t http-cpp-asan -f tools/Dockerfile.asan tools
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src http-cpp-asan \
+            bash tools/asan-inside.sh
+
+  # Concurrency gate: reactor tests under ThreadSanitizer (Linux only; no TSan
+  # runtime on the Windows MinGW toolchain). Native runner, not a container:
+  # TSan needs vm.mmap_rnd_bits=28, which kernel 6.x containers cannot set.
+  linux-tsan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Widen TSan address space
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ cmake ninja-build netcat-openbsd
+      - name: Build and test under TSan
+        run: SAN=thread bash tools/asan-inside.sh
+
+  # 60 s churn soak with RSS sampling (Linux, /proc). Plain build: sanitizers
+  # reshape the memory picture, so a flat-RSS claim belongs to a plain run.
+  linux-soak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ cmake ninja-build
+      - name: Build
+        run: |
+          cmake -S . -B build-soak -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build-soak
+      - name: Soak (60 s, RSS drift < 16 MiB)
+        run: HTTP_SERVER_SOAK_SECONDS=60 ctest --test-dir build-soak --output-on-failure
+
+  # Windows native gate: MinGW gcc, warnings-as-errors, ctest.
+  windows-native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate MinGW
+        shell: pwsh
+        run: |
+          foreach ($dir in @("C:\msys64\mingw64\bin", "C:\mingw64\bin")) {
+            if ((Test-Path "$dir\g++.exe") -and (Test-Path "$dir\gcc.exe")) {
+              "MINGW_BIN=$dir" >> $env:GITHUB_ENV
+              exit 0
+            }
+          }
+          Write-Error "no MinGW g++ found on runner"
+          exit 1
+      - name: Configure
+        shell: pwsh
+        run: |
+          $gen = if (Get-Command ninja -ErrorAction SilentlyContinue) { "Ninja" } else { "MinGW Makefiles" }
+          cmake -S . -B build-ci -G $gen -DCMAKE_BUILD_TYPE=Debug `
+            -DCMAKE_C_COMPILER="$env:MINGW_BIN\gcc.exe" `
+            -DCMAKE_CXX_COMPILER="$env:MINGW_BIN\g++.exe" `
+            -DCMAKE_EXE_LINKER_FLAGS=-static
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Build
+        shell: pwsh
+        run: cmake --build build-ci
+      - name: Test
+        shell: pwsh
+        run: ctest --test-dir build-ci --output-on-failure
