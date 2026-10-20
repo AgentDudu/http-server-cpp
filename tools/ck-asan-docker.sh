@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# ASan+UBSan gate for the platform-neutral code (http layer) on Linux.
-# Docker Desktop must be running. Native MinGW lacks sanitizer runtimes.
+# Local Linux gate: builds the container image and runs the full sanitizer
+# suite inside it (the same commands the ci linux job runs).
+# Run from git-bash. The build happens in a container copy, not your tree.
 set -euo pipefail
-cd "$(dirname "$0")/.."
-docker build -q -t http-cpp-asan -f tools/Dockerfile.asan tools >/dev/null
-# MSYS guards: stop git-bash from rewriting the container-side /src paths.
-MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' docker run --rm -v "$PWD:/src" -w /src http-cpp-asan bash -c '
-  set -euo pipefail
-  cmake -S . -B /tmp/asan -G Ninja \
-    -DCMAKE_BUILD_TYPE=Debug -DHTTP_SERVER_ENABLE_SANITIZERS=ON
-  cmake --build /tmp/asan -j
-  ASAN_OPTIONS=detect_leaks=1 /tmp/asan/unit_tests | tail -3
-'
+cd "$(git rev-parse --show-toplevel)"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) docker_bin=docker.exe;; *) docker_bin=docker;; esac
+command -v "$docker_bin" >/dev/null 2>&1 || { echo "docker not found" >&2; exit 127; }
+"$docker_bin" build -q -t http-cpp-asan -f tools/Dockerfile.asan tools >/dev/null
+# git-bash mangles POSIX-looking docker args; give docker a Windows source path
+# and disable conversion for the container-side /src.
+if [ -n "${MSYSTEM:-}" ]; then src="$(pwd -W)"; else src="$PWD"; fi
+MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' "$docker_bin" run --rm -v "$src:/src" -w /src http-cpp-asan bash tools/asan-inside.sh
