@@ -26,27 +26,46 @@ if(HTTP_SERVER_ENABLE_SANITIZERS)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
-add_library(net STATIC src/net/socket.cpp src/net/wsa.cpp)
-target_include_directories(net PUBLIC src)
-target_link_libraries(net PUBLIC ws2_32)
-target_compile_options(net PRIVATE
+add_library(http STATIC
+  src/http/status.cpp
+  src/http/headers.cpp
+  src/http/response.cpp)
+target_include_directories(http PUBLIC src)
+target_compile_options(http PRIVATE
   -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
 
-add_executable(http_server src/main.cpp)
-target_link_libraries(http_server PRIVATE net)
+# The net layer and the server binary are Windows-only by design.
+if(WIN32)
+  add_library(net STATIC src/net/socket.cpp src/net/wsa.cpp)
+  target_include_directories(net PUBLIC src)
+  target_link_libraries(net PUBLIC ws2_32)
+  target_compile_options(net PRIVATE
+    -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
 
-target_compile_options(http_server PRIVATE
-  -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
+  add_executable(http_server src/main.cpp)
+  target_link_libraries(http_server PRIVATE net)
+  target_compile_options(http_server PRIVATE
+    -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
+endif()
 
 enable_testing()
 
-add_executable(unit_tests
+set(unit_srcs
   tests/test_main.cpp
-  tests/test_socket.cpp)
+  tests/test_response.cpp)
+if(WIN32)
+  list(APPEND unit_srcs tests/test_socket.cpp)
+endif()
+
+add_executable(unit_tests ${unit_srcs})
 target_include_directories(unit_tests SYSTEM PRIVATE external/doctest)
-target_link_libraries(unit_tests PRIVATE net)
 # doctest is a vendored header: warnings from it are not ours to fix,
 # hence SYSTEM above; our own test code still builds warning-clean.
 target_compile_options(unit_tests PRIVATE -Wall -Wextra -Werror)
+if(WIN32)
+  target_link_libraries(unit_tests PRIVATE net http)
+else()
+  target_link_libraries(unit_tests PRIVATE http)
+endif()
 
 add_test(NAME unit_tests COMMAND unit_tests)
