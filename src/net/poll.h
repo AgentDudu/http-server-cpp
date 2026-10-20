@@ -18,17 +18,15 @@ inline constexpr short PollNval = POLLNVAL;
 // Thin poll()/WSAPoll fd set. Only the first pollSockets() return value of entries
 // carry meaningful revents (Windows leaves the rest untouched).
 class PollSet {
-  public:
-    void add(detail::handle_t socket, short events) {
-        fds_.push_back({socket, events, 0});
-    }
+public:
+    void add(detail::handle_t socket, short events) { fds_.push_back({socket, events, 0}); }
     void clear() { fds_.clear(); }
     std::size_t size() const { return fds_.size(); }
     detail::handle_t socket(std::size_t index) const { return fds_[index].fd; }
     short revents(std::size_t index) const { return fds_[index].revents; }
     detail::pollfd_t* data() { return fds_.data(); }
 
-  private:
+private:
     std::vector<detail::pollfd_t> fds_;
 };
 

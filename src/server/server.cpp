@@ -10,8 +10,7 @@
 
 namespace server {
 
-Server::Server(std::uint16_t port, Connection::Handler handler)
-    : handler_(std::move(handler)) {
+Server::Server(std::uint16_t port, Handler handler) : handler_(std::move(handler)) {
     listener_ = net::Socket::tcp4();
     bool ok = listener_.valid();
     if (ok) {
@@ -28,8 +27,7 @@ Server::Server(std::uint16_t port, Connection::Handler handler)
     }
     if (!ok) {
         const auto e = net::lastError();
-        throw std::runtime_error("listener setup failed (os error " + std::to_string(e.code) +
-                                 ")");
+        throw std::runtime_error("listener setup failed (os error " + std::to_string(e.code) + ")");
     }
 }
 
@@ -70,16 +68,16 @@ void Server::run(ShutdownSignal& signal) {
             }
             const long long left =
                 c->deadlineMs() >= now ? static_cast<long long>(c->deadlineMs() - now) : 0;
-            timeout = timeout < 0 ? static_cast<int>(left)
-                                  : std::min(timeout, static_cast<int>(left));
+            timeout =
+                timeout < 0 ? static_cast<int>(left) : std::min(timeout, static_cast<int>(left));
         }
         if (const int cap = static_cast<int>(signal.pollCap().count()); cap > 0) {
             timeout = timeout < 0 ? cap : std::min(timeout, cap);
         }
         if (stopping) {
             const long long left = hard >= now ? static_cast<long long>(hard - now) : 0;
-            timeout = timeout < 0 ? static_cast<int>(left)
-                                  : std::min(timeout, static_cast<int>(left));
+            timeout =
+                timeout < 0 ? static_cast<int>(left) : std::min(timeout, static_cast<int>(left));
         }
 
         const int r = net::pollSockets(set, timeout);
@@ -101,8 +99,8 @@ void Server::run(ShutdownSignal& signal) {
                 if (!s.valid()) {
                     break; // none pending (or accept error — retried next wakeup)
                 }
-                conns_.push_back(
-                    std::make_unique<Connection>(std::move(s), handler_, idle_timeout));
+                conns_.push_back(std::make_unique<Connection>(std::move(s), handler_, idle_timeout,
+                                                              max_queued_bytes));
             }
         }
 
@@ -137,9 +135,7 @@ void Server::run(ShutdownSignal& signal) {
 
 void Server::reap() {
     conns_.erase(std::remove_if(conns_.begin(), conns_.end(),
-                                [](const std::unique_ptr<Connection>& c) {
-                                    return c->dead();
-                                }),
+                                [](const std::unique_ptr<Connection>& c) { return c->dead(); }),
                  conns_.end());
 }
 

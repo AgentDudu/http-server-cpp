@@ -8,9 +8,13 @@
 namespace net {
 namespace detail {
 
-handle_t rawSocket() { return ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0); }
+handle_t rawSocket() {
+    return ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+}
 
-int rawClose(handle_t handle) { return ::close(handle); }
+int rawClose(handle_t handle) {
+    return ::close(handle);
+}
 
 bool rawSetNonBlocking(handle_t handle, bool enabled) {
     const int flags = ::fcntl(handle, F_GETFL, 0);

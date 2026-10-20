@@ -14,7 +14,7 @@ bool validFieldValue(std::string_view value);
 // Ordered header list with case-insensitive lookup. Values are trimmed of
 // leading/trailing SP and HTAB on insertion (RFC 7230 obs-fold removal semantics).
 class Headers {
-  public:
+public:
     struct Entry {
         std::string name;
         std::string value;
@@ -26,7 +26,7 @@ class Headers {
     bool contains(std::string_view name) const { return get(name) != nullptr; }
     const std::vector<Entry>& entries() const { return entries_; }
 
-  private:
+private:
     std::size_t find(std::string_view name) const;
 
     std::vector<Entry> entries_;

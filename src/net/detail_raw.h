@@ -10,10 +10,10 @@ namespace detail {
 // OS primitives. Error detail stays in the OS error slot (WSAGetLastError/errno);
 // read it via net::lastError() immediately after a failed call.
 
-handle_t rawSocket();                     // stream socket, IPv4 (CloExec where supported)
-int rawClose(handle_t);                   // 0 on success
+handle_t rawSocket();   // stream socket, IPv4 (CloExec where supported)
+int rawClose(handle_t); // 0 on success
 bool rawSetNonBlocking(handle_t, bool);
-handle_t rawAccept(handle_t listener);    // raw; then call rawAfterAccept
+handle_t rawAccept(handle_t listener); // raw; then call rawAfterAccept
 // Make the accepted socket's blocking mode match the listener's, so the portable
 // contract holds on both OSes: Windows inherits automatically, Linux does not.
 void rawAfterAccept(handle_t listener, handle_t accepted);

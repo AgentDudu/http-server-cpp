@@ -6,7 +6,9 @@
 namespace http {
 namespace {
 
-bool isOWS(char c) { return c == ' ' || c == '\t'; }
+bool isOWS(char c) {
+    return c == ' ' || c == '\t';
+}
 
 // Value bytes: printable, tab, or extended (obs); never CR/LF/NUL/other CTL.
 bool isValueChar(char c) {
@@ -29,7 +31,9 @@ bool equalIgnoreCase(std::string_view a, std::string_view b) {
 
 } // namespace
 
-void RequestParser::feed(std::string_view data) { buf_.append(data); }
+void RequestParser::feed(std::string_view data) {
+    buf_.append(data);
+}
 
 void RequestParser::fail(Error e) {
     error_ = e;

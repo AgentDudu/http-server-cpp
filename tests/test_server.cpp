@@ -9,17 +9,24 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <string>
 #include <thread>
 
 namespace {
 
 class ManualSignal final : public server::ShutdownSignal {
-  public:
+public:
     bool stopRequested() const override { return stop.load(); }
     std::chrono::milliseconds pollCap() const override { return std::chrono::milliseconds(20); }
     std::atomic_bool stop{false};
 };
+
+server::Reply okReply(std::string body = "ok\n") {
+    server::Reply r;
+    r.body = std::move(body);
+    return r;
+}
 
 sockaddr_in loopback(unsigned short port) {
     sockaddr_in addr{};
@@ -32,8 +39,7 @@ sockaddr_in loopback(unsigned short port) {
 void setRecvTimeout(net::Socket& s, int ms) {
 #ifdef _WIN32
     DWORD v = static_cast<DWORD>(ms);
-    ::setsockopt(s.handle(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&v),
-                 sizeof(v));
+    ::setsockopt(s.handle(), SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&v), sizeof(v));
 #else
     timeval tv{ms / 1000, static_cast<long>(ms % 1000) * 1000L};
     ::setsockopt(s.handle(), SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
@@ -50,33 +56,44 @@ net::Socket connectTo(unsigned short port) {
 }
 
 // One full response: head + Content-Length bytes, or whatever arrived before
-// timeout/EOF.
-std::string readResponse(net::Socket& s) {
-    std::string buf;
+// timeout/EOF. Leftover bytes of coalesced responses stay in `carry`.
+std::string readResponse(net::Socket& s, std::string& carry) {
+    std::string buf = std::move(carry);
+    carry.clear();
     char chunk[256];
     for (;;) {
+        // Complete response already buffered (pipelined leftovers)?
+        const std::size_t head_end = buf.find("\r\n\r\n");
+        if (head_end != std::string::npos) {
+            const std::size_t cl_pos = buf.find("Content-Length: ");
+            std::size_t total = std::string::npos;
+            if (cl_pos == std::string::npos || cl_pos > head_end) {
+                total = head_end + 4; // our server always sets Content-Length
+            } else {
+                std::size_t cl = 0;
+                std::size_t i = cl_pos + 16;
+                while (i < buf.size() && buf[i] >= '0' && buf[i] <= '9') {
+                    cl = cl * 10 + static_cast<std::size_t>(buf[i++] - '0');
+                }
+                total = head_end + 4 + cl;
+            }
+            if (buf.size() >= total) {
+                carry = buf.substr(total);
+                buf.resize(total);
+                return buf;
+            }
+        }
         const int n = s.recvSome(chunk, sizeof(chunk));
         if (n <= 0) {
-            return buf;
+            return buf; // timeout or EOF with an incomplete response
         }
         buf.append(chunk, static_cast<std::size_t>(n));
-        const std::size_t head_end = buf.find("\r\n\r\n");
-        if (head_end == std::string::npos) {
-            continue;
-        }
-        const std::size_t cl_pos = buf.find("Content-Length: ");
-        if (cl_pos == std::string::npos || cl_pos > head_end) {
-            return buf; // our server always sets Content-Length; nothing to wait for
-        }
-        std::size_t cl = 0;
-        std::size_t i = cl_pos + 16;
-        while (i < buf.size() && buf[i] >= '0' && buf[i] <= '9') {
-            cl = cl * 10 + static_cast<std::size_t>(buf[i++] - '0');
-        }
-        if (buf.size() >= head_end + 4 + cl) {
-            return buf;
-        }
     }
+}
+
+std::string readResponse(net::Socket& s) {
+    std::string ignored;
+    return readResponse(s, ignored);
 }
 
 bool seesEof(net::Socket& s) {
@@ -94,7 +111,7 @@ TEST_CASE("200 over keep-alive, then Connection: close, then clean stop") {
     net::Context ctx;
     ManualSignal sig;
     server::Server srv(0, [](const http::Request& req) {
-        return req.target == "/close" ? std::string("bye\n") : std::string("ok\n");
+        return okReply(req.target == "/close" ? "bye\n" : "ok\n");
     });
     const unsigned short port = srv.port();
     REQUIRE(port > 0);
@@ -122,7 +139,7 @@ TEST_CASE("200 over keep-alive, then Connection: close, then clean stop") {
 TEST_CASE("idle connection receives 408 then gets closed") {
     net::Context ctx;
     ManualSignal sig;
-    server::Server srv(0, [](const http::Request&) { return std::string("ok\n"); });
+    server::Server srv(0, [](const http::Request&) { return okReply(); });
     srv.idle_timeout = std::chrono::milliseconds(150);
     const unsigned short port = srv.port();
     std::thread runner([&] { srv.run(sig); });
@@ -147,7 +164,7 @@ TEST_CASE("idle connection receives 408 then gets closed") {
 TEST_CASE("malformed request gets 400 and the connection drops") {
     net::Context ctx;
     ManualSignal sig;
-    server::Server srv(0, [](const http::Request&) { return std::string("ok\n"); });
+    server::Server srv(0, [](const http::Request&) { return okReply(); });
     const unsigned short port = srv.port();
     std::thread runner([&] { srv.run(sig); });
 
@@ -165,7 +182,7 @@ TEST_CASE("malformed request gets 400 and the connection drops") {
 TEST_CASE("stop while connections are idle returns promptly") {
     net::Context ctx;
     ManualSignal sig;
-    server::Server srv(0, [](const http::Request&) { return std::string("ok\n"); });
+    server::Server srv(0, [](const http::Request&) { return okReply(); });
     const unsigned short port = srv.port();
     std::thread runner([&] { srv.run(sig); });
 
@@ -178,4 +195,77 @@ TEST_CASE("stop while connections are idle returns promptly") {
     sig.stop.store(true);
     runner.join(); // idle connection is closed by beginShutdown; no grace wait
     CHECK(seesEof(c));
+}
+
+TEST_CASE("slow-loris partial request head times out with 408") {
+    net::Context ctx;
+    ManualSignal sig;
+    server::Server srv(0, [](const http::Request&) { return okReply(); });
+    srv.idle_timeout = std::chrono::milliseconds(150);
+    const unsigned short port = srv.port();
+    std::thread runner([&] { srv.run(sig); });
+
+    auto c = connectTo(port);
+    REQUIRE(c.valid());
+    REQUIRE(sendReq(c, "GET / HTT")); // drip that never finishes
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    const std::string r = readResponse(c);
+    CHECK(r.find("408") != std::string::npos);
+    CHECK(seesEof(c));
+
+    sig.stop.store(true);
+    runner.join();
+}
+
+TEST_CASE("pipelined burst survives a tiny per-connection write queue") {
+    net::Context ctx;
+    ManualSignal sig;
+    server::Server srv(0, [](const http::Request&) { return okReply(); });
+    srv.max_queued_bytes = 100; // one response exceeds it: throttle/resume every time
+    const unsigned short port = srv.port();
+    std::thread runner([&] { srv.run(sig); });
+
+    auto c = connectTo(port);
+    REQUIRE(c.valid());
+    std::string burst;
+    for (int i = 0; i < 10; ++i) {
+        burst += "GET /p HTTP/1.1\r\n\r\n";
+    }
+    REQUIRE(sendReq(c, burst));
+    std::string carry; // responses coalesce into few reads; keep the seam honest
+    for (int i = 0; i < 10; ++i) {
+        const std::string r = readResponse(c, carry);
+        CHECK(r.find("HTTP/1.1 200 OK") != std::string::npos);
+        CHECK(r.find("\r\n\r\nok\n") != std::string::npos);
+    }
+    CHECK(!seesEof(c)); // keep-alive still open after the storm
+
+    sig.stop.store(true);
+    runner.join();
+}
+
+TEST_CASE("HEAD answers with truthful Content-Length and no body") {
+    net::Context ctx;
+    ManualSignal sig;
+    server::Server srv(0, [](const http::Request&) { return okReply("hello"); });
+    const unsigned short port = srv.port();
+    std::thread runner([&] { srv.run(sig); });
+
+    auto c = connectTo(port);
+    REQUIRE(c.valid());
+    REQUIRE(sendReq(c, "HEAD /x HTTP/1.1\r\n\r\n"));
+    const std::string head = readResponse(c); // body never comes; returns on timeout
+    const std::size_t head_end = head.find("\r\n\r\n");
+    REQUIRE(head_end != std::string::npos);
+    CHECK(head.find("Content-Length: 5") != std::string::npos);
+    CHECK(head.size() == head_end + 4); // exactly the head: zero body bytes
+
+    // stream stayed framed: a GET right after still lines up
+    REQUIRE(sendReq(c, "GET /x HTTP/1.1\r\n\r\n"));
+    const std::string r = readResponse(c);
+    CHECK(r.find("HTTP/1.1 200 OK") != std::string::npos);
+    CHECK(r.find("\r\n\r\nhello") != std::string::npos);
+
+    sig.stop.store(true);
+    runner.join();
 }

@@ -48,10 +48,16 @@ ShutdownSignals::~ShutdownSignals() {
     }
 }
 
-bool ShutdownSignals::stopRequested() const { return g_stop.load(); }
+bool ShutdownSignals::stopRequested() const {
+    return g_stop.load();
+}
 
-void ShutdownSignals::preparePoll(net::PollSet& set) { (void)set; }
-void ShutdownSignals::afterPoll(const net::PollSet& set) { (void)set; }
+void ShutdownSignals::preparePoll(net::PollSet& set) {
+    (void)set;
+}
+void ShutdownSignals::afterPoll(const net::PollSet& set) {
+    (void)set;
+}
 
 std::chrono::milliseconds ShutdownSignals::pollCap() const {
     return std::chrono::milliseconds(100); // no waitable socket+event union on WSAPoll

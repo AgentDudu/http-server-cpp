@@ -20,11 +20,20 @@ until then.
 - `http/` — status, headers, request parser, response serialization landed. Parser is
   push/incremental, enforces head/body/count limits, and rejects bare-LF endings,
   obsolete folding, duplicate `Content-Length`, `Content-Length`+`Transfer-Encoding`,
-  non-token names/methods, unknown versions. Pending: URL decode/normalise, MIME.
+  non-token names/methods, unknown versions. URL decode/normalise and MIME live
+  with the static handler (they are a serving concern, not a parsing one).
 - `server/` — single-threaded poll reactor (`Server::run`): accept batch, per-connection
-  deadlines (408), backpressure via POLLOUT, graceful stop (drain queued responses,
-  grace cap, then drop). `Connection` = socket + `RequestParser` + output buffer;
-  protocol errors are answered once (best effort) then the connection drops —
+  deadlines (408), graceful stop (drain queued responses, grace cap, then drop).
+  `Connection` = socket + `RequestParser` + capped output buffer (`max_queued_bytes`):
+  a slow reader throttles the drain — queued responses stop growing, remaining
+  pipelined requests wait in the parser, POLLOUT or the next read resumes it.
+  Handlers return `Reply{status, content_type, body}`; HEAD keeps an honest
+  `Content-Length` and no body; handler exceptions become 500 at the reactor seam.
+  `StaticFiles` serves a canonical root: strict percent-decode before resolution,
+  traversal/encoded/backslash/absolute targets refused as 404 before touching disk
+  (symlink prefixes resolved via `weakly_canonical`, case-folded containment on
+  Windows), index.html for directories, 405 elsewhere, whole-file reads.
+  Protocol errors are answered once (best effort) then the connection drops —
   smuggling candidates never share a stream. `ShutdownSignal` is the pluggable stop
   trigger; tests drive it directly.
 - `app/` — shutdown signals, one paragraph precisely because behaviour differs:

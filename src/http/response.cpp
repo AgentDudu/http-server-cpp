@@ -35,8 +35,8 @@ bool Response::serializeHead(std::string& out) const {
         return false; // RFC 7230: 204/304/1xx must not carry a body
     }
 
-    std::string head = "HTTP/1.1 " + std::to_string(code) + " " +
-                       std::string(reasonPhrase(status_)) + "\r\n";
+    std::string head =
+        "HTTP/1.1 " + std::to_string(code) + " " + std::string(reasonPhrase(status_)) + "\r\n";
 
     bool haveLength = headers_.get("Content-Length") != nullptr;
     for (const auto& entry : headers_.entries()) {

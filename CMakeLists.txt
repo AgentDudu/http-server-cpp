@@ -71,7 +71,8 @@ target_compile_options(net PRIVATE ${HTTP_WARNINGS})
 # server: reactor + connection, platform-neutral; signals implementation is per OS.
 add_library(server STATIC
   src/server/server.cpp
-  src/server/connection.cpp)
+  src/server/connection.cpp
+  src/server/static_file.cpp)
 target_link_libraries(server PUBLIC net http)
 target_compile_options(server PRIVATE ${HTTP_WARNINGS})
 
@@ -92,7 +93,8 @@ add_executable(unit_tests
   tests/test_socket.cpp
   tests/test_request.cpp
   tests/test_response.cpp
-  tests/test_server.cpp)
+  tests/test_server.cpp
+  tests/test_static.cpp)
 target_include_directories(unit_tests SYSTEM PRIVATE external/doctest)
 # doctest is a vendored header: warnings from it are not ours to fix,
 # hence SYSTEM above; our own test code still builds warning-clean.

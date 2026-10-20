@@ -13,7 +13,7 @@ namespace server {
 // poll, so an implementation without a wake handle (Windows console events)
 // only needs a bounded pollCap().
 class ShutdownSignal {
-  public:
+public:
     virtual ~ShutdownSignal() = default;
 
     virtual bool stopRequested() const = 0;
