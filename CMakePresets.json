@@ -1,56 +1,130 @@
 {
   "version": 3,
-  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25
+  },
   "configurePresets": [
     {
-      "name": "gcc",
+      "name": "base",
       "hidden": true,
-      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "C:/mingw64/bin/gcc.exe",
-        "CMAKE_CXX_COMPILER": "C:/mingw64/bin/g++.exe",
-        "CMAKE_MAKE_PROGRAM": "C:/mingw64/bin/ninja.exe",
-        "CMAKE_EXE_LINKER_FLAGS": "-static"
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HTTPSERVER_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "win-base",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HTTPSERVER_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "msvc-x64",
+      "displayName": "MSVC x64 (Visual Studio)",
+      "inherits": "win-base",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64"
+    },
+    {
+      "name": "mingw-x64",
+      "displayName": "MinGW-w64 x64 (g++ / Ninja)",
+      "inherits": "win-base",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++"
+      },
+      "environment": {
+        "PATH": "C:/msys64/mingw64/bin;C:/mingw64/bin;$penv{PATH}"
       }
     },
     {
       "name": "gcc-debug",
       "displayName": "GCC Debug",
-      "inherits": "gcc",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+      "inherits": "base"
     },
     {
       "name": "gcc-release",
       "displayName": "GCC Release",
-      "inherits": "gcc",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
     },
     {
       "name": "gcc-asan",
       "displayName": "GCC ASan+UBSan",
-      "inherits": "gcc",
+      "inherits": "base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "HTTP_SERVER_ENABLE_SANITIZERS": "ON"
+        "HTTPSERVER_SANITIZER": "address,undefined"
       }
     }
   ],
   "buildPresets": [
-    { "name": "gcc-debug", "configurePreset": "gcc-debug" },
-    { "name": "gcc-release", "configurePreset": "gcc-release" },
-    { "name": "gcc-asan", "configurePreset": "gcc-asan" }
+    {
+      "name": "msvc-x64-debug",
+      "displayName": "MSVC x64 Debug",
+      "configurePreset": "msvc-x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "msvc-x64-release",
+      "displayName": "MSVC x64 Release",
+      "configurePreset": "msvc-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "mingw-x64-debug",
+      "displayName": "MinGW x64 Debug",
+      "configurePreset": "mingw-x64"
+    },
+    {
+      "name": "gcc-debug",
+      "configurePreset": "gcc-debug"
+    },
+    {
+      "name": "gcc-release",
+      "configurePreset": "gcc-release"
+    },
+    {
+      "name": "gcc-asan",
+      "configurePreset": "gcc-asan"
+    }
   ],
   "testPresets": [
     {
+      "name": "msvc-x64-debug",
+      "configurePreset": "msvc-x64",
+      "configuration": "Debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "mingw-x64-debug",
+      "configurePreset": "mingw-x64",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
       "name": "gcc-debug",
       "configurePreset": "gcc-debug",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     },
     {
       "name": "gcc-asan",
       "configurePreset": "gcc-asan",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }

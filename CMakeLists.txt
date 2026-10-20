@@ -61,6 +61,7 @@ endif()
 
 add_library(net STATIC
   src/net/socket_common.cpp
+  src/net/wakeup.cpp
   ${net_platform_srcs})
 target_include_directories(net PUBLIC src)
 if(WIN32)

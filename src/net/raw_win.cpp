@@ -11,6 +11,42 @@ handle_t rawSocket() {
     return ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 }
 
+// No socketpair() on Winsock: build the equivalent from a loopback listener.
+// Setup runs blocking (one-time); the pair leaves non-blocking.
+bool rawSocketPair(handle_t out[2]) {
+    const handle_t l = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (l == kInvalidHandle) {
+        return false;
+    }
+    sockaddr_in a{};
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    a.sin_port = 0;
+    int len = sizeof(a);
+    bool ok = ::bind(l, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != SOCKET_ERROR &&
+              ::listen(l, 1) != SOCKET_ERROR &&
+              ::getsockname(l, reinterpret_cast<sockaddr*>(&a), &len) != SOCKET_ERROR;
+    const handle_t c = ok ? ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) : kInvalidHandle;
+    if (ok && c != kInvalidHandle) {
+        ok = ::connect(c, reinterpret_cast<sockaddr*>(&a), sizeof(a)) != SOCKET_ERROR;
+    }
+    if (ok) {
+        out[0] = ::accept(l, nullptr, nullptr);
+        out[1] = c;
+        ok = out[0] != kInvalidHandle;
+    }
+    ::closesocket(l);
+    if (!ok) {
+        if (c != kInvalidHandle) {
+            ::closesocket(c);
+        }
+        return false;
+    }
+    rawSetNonBlocking(out[0], true);
+    rawSetNonBlocking(out[1], true);
+    return true;
+}
+
 int rawClose(handle_t handle) {
     return ::closesocket(handle);
 }

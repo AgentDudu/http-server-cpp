@@ -1,20 +1,24 @@
 #pragma once
 
 #include "net/socket.h"
-#include "server/connection.h"
 #include "server/handler.h"
 #include "server/shutdown.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <vector>
 
 namespace server {
 
-// Single-threaded poll reactor: one listener, N keep-alive connections, one
-// fixed handler. run() returns after the stop signal, once queued responses
-// drained or the grace expired. Threading (worker hand-off) comes later.
+// Acceptor thread plus K reactor threads (run() calls from the acceptor).
+// Each accepted connection is handed to one reactor and stays owned by exactly
+// that reactor forever — no connection state is ever shared. Hand-off is a
+// socket move over a mutex-protected inbox plus a Wakeup socket; reactors
+// never lock anything else.
+//
+// run() returns after the stop signal, once every reactor drained its queued
+// responses or hit the grace cap.
 class Server {
 public:
     // Throws std::runtime_error when bind/listen fails.
@@ -30,13 +34,13 @@ public:
     std::chrono::milliseconds shutdown_grace{5000}; // drain budget after stop
     int accept_batch = 64;                          // accepts per poll wakeup
     std::size_t max_queued_bytes = 1u << 20;        // per-connection response backlog
+    unsigned threads = 0;                           // reactor count; 0 = hardware_concurrency
 
 private:
-    void reap();
+    class Reactor; // defined in server.cpp; reactor thread owns its connections
 
     net::Socket listener_;
     Handler handler_;
-    std::vector<std::unique_ptr<Connection>> conns_;
 };
 
 } // namespace server
