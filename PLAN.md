@@ -127,8 +127,9 @@ runs. Formatting: `clang-format`, enforced by `--dry-run -Werror` in `tools/ck.p
 **Sanitizer reality (verified on this host):** MinGW-w64 GCC 13.2 and 15.2 installs both
 lack `libasan`/`libubsan`, and GCC has no TSan on Windows at all. `gcc-asan` preset
 therefore self-detects and fails configure with a clear message; `ck.ps1` skips the
-native ASan gate with a loud warning. Replacement gate: platform-neutral unit tests
-(parser, URL, MIME, Range) run under ASan in a Linux Docker container.
+native ASan gate with a loud warning. Replacement gate: `tools/ck-asan-docker.sh`
+builds and runs the platform-neutral unit tests under ASan+UBSan (leak check on) in an
+Ubuntu 24.04 container — verified green. Needs Docker Desktop running.
 
 Windows notes that will bite, handled up front:
 - `WSAStartup`/`WSACleanup` owned by a single RAII context in `main`.
