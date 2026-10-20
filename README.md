@@ -80,7 +80,7 @@ tests/       doctest suite incl. framing corpus, threading, env-gated soak
 ```
 
 [ARCHITECTURE.md](docs/ARCHITECTURE.md) · [BUILDING.md](docs/BUILDING.md) ·
-[API.md](docs/API.md)
+[API.md](docs/API.md) · [ROADMAP.md](ROADMAP.md)
 
 ## Verification
 
