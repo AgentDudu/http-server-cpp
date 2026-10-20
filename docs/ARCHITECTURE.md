@@ -17,9 +17,10 @@ until then.
     send/recv, reported to the reactor from poll as `ErrorKind::Interrupted`.
   - `glibc` needs `_GNU_SOURCE` with `-std=c++20` for `accept4`/`SOCK_CLOEXEC`.
   - glibc `setsockopt` requires `int` option size; Winsock is lenient.
-- `http/` — status, headers, response serialization landed (strict head: CTL/CR/LF/NUL
-  rejected, implied Content-Length, chunk encoder). Pending: request parser, URL
-  decode/normalise, MIME.
+- `http/` — status, headers, request parser, response serialization landed. Parser is
+  push/incremental, enforces head/body/count limits, and rejects bare-LF endings,
+  obsolete folding, duplicate `Content-Length`, `Content-Length`+`Transfer-Encoding`,
+  non-token names/methods, unknown versions. Pending: URL decode/normalise, MIME.
 - `app/` — signal handling (pending, win + posix)
 - `server/` — listener, connection, static file handler (pending)
 

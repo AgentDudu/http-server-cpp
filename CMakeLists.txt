@@ -32,6 +32,7 @@ set(HTTP_WARNINGS -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Werror)
 add_library(http STATIC
   src/http/status.cpp
   src/http/headers.cpp
+  src/http/request.cpp
   src/http/response.cpp)
 target_include_directories(http PUBLIC src)
 target_compile_options(http PRIVATE ${HTTP_WARNINGS})
@@ -67,6 +68,7 @@ enable_testing()
 add_executable(unit_tests
   tests/test_main.cpp
   tests/test_socket.cpp
+  tests/test_request.cpp
   tests/test_response.cpp)
 target_include_directories(unit_tests SYSTEM PRIVATE external/doctest)
 # doctest is a vendored header: warnings from it are not ours to fix,
