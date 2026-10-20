@@ -1,9 +1,9 @@
 name: ci
 on:
   pull_request:
-    branches: [develop]
+    branches: [main, develop]
   push:
-    branches: [develop]
+    branches: [main, develop]
 
 jobs:
   # Linux gate: the same container image and script as tools/ck-asan-docker.sh.
