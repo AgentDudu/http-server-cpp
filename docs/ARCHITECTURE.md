@@ -22,11 +22,17 @@ until then.
   obsolete folding, duplicate `Content-Length`, `Content-Length`+`Transfer-Encoding`,
   non-token names/methods, unknown versions. URL decode/normalise and MIME live
   with the static handler (they are a serving concern, not a parsing one).
-- `server/` — single-threaded poll reactor (`Server::run`): accept batch, per-connection
-  deadlines (408), graceful stop (drain queued responses, grace cap, then drop).
-  `Connection` = socket + `RequestParser` + capped output buffer (`max_queued_bytes`):
-  a slow reader throttles the drain — queued responses stop growing, remaining
-  pipelined requests wait in the parser, POLLOUT or the next read resumes it.
+- `server/` — acceptor thread + K reactor threads (`Server::run`, `threads=0` →
+  hardware_concurrency). The acceptor batches accepts and hands each socket to a
+  reactor round-robin over a mutex-guarded inbox plus a `net::Wakeup` socketpair;
+  a `Connection` (socket + `RequestParser` + capped output buffer
+  `max_queued_bytes`) is owned by exactly one reactor forever — no connection
+  state is ever shared or locked. Poll timeouts come from per-connection
+  deadlines (408); graceful stop drains queued responses per reactor, grace cap,
+  then drops. EINTR from poll is just a re-check (the stop path is the only
+  joiner). A slow reader throttles its connection — queued responses stop
+  growing, remaining pipelined requests wait in the parser, POLLOUT or the next
+  read resumes the drain.
   Handlers return `Reply{status, content_type, body}`; HEAD keeps an honest
   `Content-Length` and no body; handler exceptions become 500 at the reactor seam.
   `StaticFiles` serves a canonical root: strict percent-decode before resolution,

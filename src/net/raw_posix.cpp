@@ -12,6 +12,13 @@ handle_t rawSocket() {
     return ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
 }
 
+bool rawSocketPair(handle_t out[2]) {
+    if (::socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0, out) != 0) {
+        return false;
+    }
+    return true;
+}
+
 int rawClose(handle_t handle) {
     return ::close(handle);
 }

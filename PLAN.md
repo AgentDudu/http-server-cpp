@@ -174,7 +174,7 @@ phase/step/milestone wording, ever.
 | ✓ | ~~`feature/posix-socket-layer`~~ | The seam: portable `net/` API + `raw_win`/`raw_posix` backends; `accept4` + `MSG_NOSIGNAL` + `EINTR`; cross-platform socket tests; Docker gate builds whole Linux tree | merged — both gates green |
 | C | `feature/ci-matrix` | Actions matrix: Linux job = sanitizer container (`tools/asan-inside.sh`), Windows = native MinGW + ctest | merged — PR #5 gated itself green on first run |
 | R | `feature/reactor-and-connection` | single-threaded poll reactor: connection state machine, timeouts (408), POLLOUT backpressure, signals (self-pipe / console ctrl), graceful drain | merged — 200/keep-alive/408/400/stop integration tests; ASan + TSan green; SIGINT-exit-0 smoke in the Linux gate |
-| T | `feature/reactor-threading` | acceptor thread + K reactors + hand-off inbox; `Connection` stays owned by one reactor | TSan green on concurrent tests; RSS stays flat |
+| ✓ | ~~`feature/reactor-threading`~~ | acceptor thread + K reactors + socket hand-off inbox (`net::Wakeup`) | merged — cross-reactor keep-alive/pipelining/stop-drain tests; TSan green; EINTR double-join fixed |
 | ✓ | ~~`feature/static-files`~~ | root mapping, traversal guard, MIME, index, 404/405, HEAD (`std::filesystem`) + per-connection write cap | merged — traversal/HEAD/405/slow-loris/pipelined-burst tests both OSes; ASan + TSan green |
 | G | `feature/caching-and-range` | ETag, Last-Modified, If-None-Match, Range/206/416 | 304 + 206 tests incl. multi-range rejection |
 | H | `feature/hardening` | slow-body limit, smuggling corpus, soak (pipelining + slow-client tests landed with S) | ASan clean; 60 s soak flat RSS on Linux |

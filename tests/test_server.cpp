@@ -269,3 +269,116 @@ TEST_CASE("HEAD answers with truthful Content-Length and no body") {
     sig.stop.store(true);
     runner.join();
 }
+
+// ---- threading (T) ---------------------------------------------------------
+//
+// The acceptor hands each connection to one reactor round-robin; these cases
+// put connections on several reactors at once and prove the hand-off keeps
+// per-connection semantics identical (keep-alive, pipelining, drain-on-stop).
+// The CI TSan job runs all of this across real threads.
+
+TEST_CASE("many keep-alive connections spread across 4 reactors") {
+    net::Context ctx;
+    ManualSignal sig;
+    std::atomic<unsigned> serves{0};
+    server::Server srv(0, [&serves](const http::Request&) {
+        return okReply("r" + std::to_string(serves.fetch_add(1)));
+    });
+    srv.threads = 4;
+    srv.idle_timeout = std::chrono::seconds(5);
+    const unsigned short port = srv.port();
+    std::thread runner([&] { srv.run(sig); });
+    for (int i = 0; i < 100 && srv.port() == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    std::vector<net::Socket> conns;
+    for (int i = 0; i < 12; ++i) {
+        auto c = connectTo(port);
+        REQUIRE(c.valid());
+        REQUIRE(sendReq(c, "GET /a HTTP/1.1\r\n\r\n")); // request 1 of 2
+        conns.push_back(std::move(c));
+    }
+    for (auto& c : conns) {
+        CHECK(readResponse(c).find("HTTP/1.1 200 OK") != std::string::npos);
+    }
+    // Second request per connection: keep-alive still works on whichever
+    // reactor owns it, and the reply is the next response on that socket.
+    for (auto& c : conns) {
+        REQUIRE(sendReq(c, "GET /b HTTP/1.1\r\n\r\n"));
+    }
+    for (auto& c : conns) {
+        CHECK(readResponse(c).find("HTTP/1.1 200 OK") != std::string::npos);
+    }
+
+    sig.stop.store(true);
+    runner.join();
+}
+
+TEST_CASE("graceful stop drains connections held by every reactor") {
+    net::Context ctx;
+    ManualSignal sig;
+    server::Server srv(0, [](const http::Request&) { return okReply("drain"); });
+    srv.threads = 4;
+    const unsigned short port = srv.port();
+    std::thread runner([&] { srv.run(sig); });
+    for (int i = 0; i < 100 && srv.port() == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // 8 connections -> round-robin lands on all four reactors. Serving one
+    // request each guarantees the hand-off happened before stop.
+    std::vector<net::Socket> conns;
+    for (int i = 0; i < 8; ++i) {
+        auto c = connectTo(port);
+        REQUIRE(c.valid());
+        REQUIRE(sendReq(c, "GET / HTTP/1.1\r\n\r\n"));
+        CHECK(readResponse(c).find("200") != std::string::npos);
+        conns.push_back(std::move(c));
+    }
+
+    sig.stop.store(true);
+    runner.join(); // returns once every reactor drained its queue
+    for (auto& c : conns) {
+        char buf[1];
+        CHECK(c.recvSome(buf, 1) == 0); // every reactor closed its connections
+    }
+}
+
+TEST_CASE("pipelined storms and fresh connections cross reactors together") {
+    net::Context ctx;
+    ManualSignal sig;
+    server::Server srv(0, [](const http::Request&) { return okReply("storm"); });
+    srv.threads = 4;
+    srv.idle_timeout = std::chrono::seconds(5);
+    const unsigned short port = srv.port();
+    std::thread runner([&] { srv.run(sig); });
+    for (int i = 0; i < 100 && srv.port() == 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    std::string burst;
+    for (int i = 0; i < 5; ++i) {
+        burst += "GET /s HTTP/1.1\r\n\r\n";
+    }
+    std::vector<net::Socket> conns;
+    std::vector<int> sent;
+    for (int round = 0; round < 3; ++round) {
+        auto c = connectTo(port); // a fresh client while the others are busy
+        REQUIRE(c.valid());
+        conns.push_back(std::move(c));
+        sent.push_back(0);
+        for (std::size_t i = 0; i < conns.size(); ++i) {
+            REQUIRE(sendReq(conns[i], burst)); // everyone bursts again
+            ++sent[i];
+        }
+    }
+    for (std::size_t i = 0; i < conns.size(); ++i) {
+        for (int j = 0; j < sent[i]; ++j) {
+            CHECK(readResponse(conns[i]).find("200 OK") != std::string::npos);
+        }
+    }
+
+    sig.stop.store(true);
+    runner.join();
+}

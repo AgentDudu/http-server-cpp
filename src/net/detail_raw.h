@@ -10,7 +10,9 @@ namespace detail {
 // OS primitives. Error detail stays in the OS error slot (WSAGetLastError/errno);
 // read it via net::lastError() immediately after a failed call.
 
-handle_t rawSocket();   // stream socket, IPv4 (CloExec where supported)
+handle_t rawSocket(); // stream socket, IPv4 (CloExec where supported)
+// Connected non-blocking bidirectional pipe for poll-set wake-ups (both valid).
+bool rawSocketPair(handle_t out[2]);
 int rawClose(handle_t); // 0 on success
 bool rawSetNonBlocking(handle_t, bool);
 handle_t rawAccept(handle_t listener); // raw; then call rawAfterAccept
