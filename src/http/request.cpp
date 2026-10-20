@@ -86,14 +86,14 @@ bool RequestParser::parseRequestLine() {
         fail(Error::BadRequest);
         return true;
     }
-    req_.method = line.substr(0, sp1);
-    req_.target = line.substr(sp1 + 1, sp2 - sp1 - 1);
+    req_.method.assign(line.data(), sp1);
+    req_.target.assign(line.data() + sp1 + 1, sp2 - sp1 - 1);
     const std::string_view version = line.substr(sp2 + 1);
     if (version != "HTTP/1.0" && version != "HTTP/1.1") {
         fail(Error::VersionNotSupported);
         return true;
     }
-    req_.version = version.substr(5); // "1.0" / "1.1"
+    req_.version.assign(version.data() + 5, version.size() - 5); // "1.0" / "1.1"
     for (std::string_view tok : {req_.method, req_.target}) {
         for (char c : tok) {
             const unsigned char u = static_cast<unsigned char>(c);
@@ -228,8 +228,10 @@ RequestParser::Result RequestParser::next() {
         case State::Failed:
             return Result::Error;
         case State::Done:
-            req_.body = body_len_ == 0 ? std::string_view{}
-                                       : std::string_view(buf_.data() + body_off_, body_len_);
+            req_.body.clear();
+            if (body_len_ != 0) {
+                req_.body.assign(buf_.data() + body_off_, body_len_);
+            }
             return Result::Request;
         case State::RequestLine:
             if (!parseRequestLine()) {

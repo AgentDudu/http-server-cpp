@@ -177,11 +177,20 @@ phase/step/milestone wording, ever.
 | ✓ | ~~`feature/reactor-threading`~~ | acceptor thread + K reactors + socket hand-off inbox (`net::Wakeup`) | merged — cross-reactor keep-alive/pipelining/stop-drain tests; TSan green; EINTR double-join fixed |
 | ✓ | ~~`feature/static-files`~~ | root mapping, traversal guard, MIME, index, 404/405, HEAD (`std::filesystem`) + per-connection write cap | merged — traversal/HEAD/405/slow-loris/pipelined-burst tests both OSes; ASan + TSan green |
 | G | `feature/caching-and-range` | ETag, Last-Modified, If-None-Match, Range/206/416 | merged — 304 (weak/list/star/IMS-precedence) + single-range 206/416 + If-Range tests; multi-range ignored (200) by design; ASan + TSan green |
-| H | `feature/hardening` | slow-body limit, smuggling corpus, soak (pipelining + slow-client tests landed with S) | ASan clean; 60 s soak flat RSS on Linux |
+| ✓ | ~~`feature/hardening`~~ | slow-body 408 budget, server-level smuggling corpus, env-gated 60 s RSS soak, restored threading suite | merged — corpus proves rejected streams die with the stream and never reach the handler; soak RSS drift < 16 MiB (Linux) |
 | D | `feature/docs-and-benchmark` | README (build/run per OS, limits), load script, numbers | documented; req/s + RSS recorded on both platforms |
 
 Then `release/0.1.0` → `develop` + PR to `main` (approval required) → tag `v0.1.0`.
-All of C, R, T, S, G merged; H (hardening soak/corpus) then D (docs/benchmark) remain.
+All of C, R, T, S, G, H merged; D (docs/benchmark) remains.
+
+> **Integrity note (H-phase audit).** `tests/test_connection.cpp`, `tests/test_threads.cpp`,
+> `tests/test_util.cpp`, `tests/test_range.cpp` and a standalone `http::Range` module had
+> only ever existed in the working tree — a botched `commit --amend` chain dropped them
+> from the threading-phase commit, so every CI run since executed a silently smaller
+> suite than reported. The threading suite is restored (`tests/test_threads.cpp`, now
+> genuinely TSan-covered); range/date coverage demonstrably lives inside
+> `tests/test_static.cpp` and `tests/test_date.cpp`, which were committed.
+
 
 ## 8. Git workflow (gitflow)
 

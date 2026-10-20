@@ -97,6 +97,9 @@ add_executable(unit_tests
   tests/test_response.cpp
   tests/test_date.cpp
   tests/test_server.cpp
+  tests/test_threads.cpp
+  tests/test_smuggling.cpp
+  tests/test_soak.cpp
   tests/test_static.cpp)
 target_include_directories(unit_tests SYSTEM PRIVATE external/doctest)
 # doctest is a vendored header: warnings from it are not ours to fix,

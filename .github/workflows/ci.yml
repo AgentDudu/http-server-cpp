@@ -33,6 +33,23 @@ jobs:
       - name: Build and test under TSan
         run: SAN=thread bash tools/asan-inside.sh
 
+  # 60 s churn soak with RSS sampling (Linux, /proc). Plain build: sanitizers
+  # reshape the memory picture, so a flat-RSS claim belongs to a plain run.
+  linux-soak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++ cmake ninja-build
+      - name: Build
+        run: |
+          cmake -S . -B build-soak -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build build-soak
+      - name: Soak (60 s, RSS drift < 16 MiB)
+        run: HTTP_SERVER_SOAK_SECONDS=60 ctest --test-dir build-soak --output-on-failure
+
   # Windows native gate: MinGW gcc, warnings-as-errors, ctest.
   windows-native:
     runs-on: windows-latest

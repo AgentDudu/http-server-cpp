@@ -58,6 +58,7 @@ private:
     std::uint64_t idle_ms_;
     std::size_t max_queued_;
     http::RequestParser parser_;
+    bool served_any_ = false; // idle keep-alive timeouts close quietly after this
     std::string out_;
     std::size_t out_off_ = 0;
     bool want_write_ = false;

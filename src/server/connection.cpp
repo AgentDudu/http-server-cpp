@@ -93,6 +93,7 @@ Connection::Drain Connection::drainParser() {
                           {}};
         }
         parser_.reset();
+        served_any_ = true;
         // During shutdown a queued reply (Connection: close) must not strand
         // pipelined requests that were already parsed: keep serving.
         respond(reply, !ka || (shutting_down_ && pending() == 0), head);
@@ -205,6 +206,13 @@ void Connection::onWritable() {
 
 void Connection::onTimeout() {
     if (dead_) {
+        return;
+    }
+    if (served_any_ && parser_.idle()) {
+        // Between requests on a served connection: quiet hang-up, the RFC-
+        // prescribed answer to an idle keep-alive stream. 408 is reserved
+        // for requests that started and stalled.
+        close();
         return;
     }
     respond(
